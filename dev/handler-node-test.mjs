@@ -106,12 +106,13 @@ stubUpstream({
       headword: 'ubiquitous',
       pos: 'adj.',
       meaningZh: '无处不在的',
+      theme: '科技与社会',
       examples: ['Phones are ubiquitous.'],
       collocations: [{ phrase: 'ubiquitous in daily life', gloss: '在日常生活中无处不在' }],
     },
     { headword: '   ' },
     { headword: 'UBIQUITOUS', meaningZh: '重复词头' },
-    { headword: 'bare', meaningZh: 123, examples: 'not an array', collocations: [{ gloss: '没有 phrase' }, 'junk'] },
+    { headword: 'bare', meaningZh: 123, theme: 456, examples: 'not an array', collocations: [{ gloss: '没有 phrase' }, 'junk'] },
   ],
 });
 const intakeResult = await configured(post('intake', { raw: 'ubiquitous, bare' }));
@@ -123,9 +124,11 @@ assert.deepEqual(intake.words[1], {
   headword: 'bare',
   pos: '',
   meaningZh: '',
+  theme: '',
   examples: [],
   collocations: [],
 });
+assert.equal(intake.words[0].theme, '科技与社会');
 assert.equal(intake.words[0].collocations[0].phrase, 'ubiquitous in daily life');
 assert.equal(upstreamCalls[0].options.body.includes('Phones are ubiquitous'), false);
 assert.equal(JSON.parse(upstreamCalls[0].options.body).messages[1].content, 'ubiquitous, bare');

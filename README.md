@@ -38,7 +38,7 @@
 | `model-text` | 按题干生成示范短文 | `{ prompt, words[] }` | `{ ok, modelText }` |
 | `intake` | 把用户随手粘贴的任意文本整理成词卡 | `{ raw }`（≤6000 字） | `{ ok, words[] }`（≤30 条） |
 
-`intake` 给 B 的收词入口用：不规定粘贴格式，一串单词、一段带释义的笔记都能进。返回的每条是 `{ headword, pos, meaningZh, examples[≤2], collocations[≤4]{phrase,gloss} }`，字段缺了就是空串/空数组，词头已去重，B 侧直接补 `id`（`crypto.randomUUID()`）、`mastery: 'passive'`、`updatedAt` 后交给 `addWord`/`saveWords` 即可。网关不可用（`service_not_configured` / `upstream_unavailable`）时，B 侧兜底方案是按换行与逗号切分、只填 `headword`，并在界面上写明这次没走 AI，别假装解析成功。
+`intake` 是收词的正门：不规定粘贴格式，一串单词、一段带释义的笔记都能进。返回的每条是 `{ headword, pos, meaningZh, theme, examples[≤2], collocations[≤4]{phrase,gloss} }`，字段缺了就是空串/空数组，词头已去重，最多 30 条。`theme` 是模型对这批词共同话题的判断（如「海洋与环境」），A 侧把它存成词卡的 `source: 粘贴导入 · ${theme}`，出题时按「·」后的主题生成题干，所以用户自己粘的词也能「按词出题」。网关不可用（`service_not_configured` / `upstream_unavailable`）时退化为按换行与逗号切分、只填 `headword`，并在界面上写明这次没走 AI，不假装解析成功。
 
 上游走 DeepSeek 的 OpenAI 兼容接口（`https://api.deepseek.com/v1`），环境变量：`API_KEY`（必填 Secret，填 DeepSeek 的 key）、`AI_MODEL`（默认 `deepseek-chat`）、`AI_BASE_URL`（可选，换服务商时用）。缺 key 时返回 `service_not_configured`，前端自动回落本地 mock 并在结果里写明兜底原因，不会假装调用了 AI。
 

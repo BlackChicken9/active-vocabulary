@@ -1,4 +1,4 @@
-import type { Feedback, Submission, Word, WordUsage, WritingTask } from '../../types';
+import type { Collocation, Feedback, Submission, Word, WordUsage, WritingTask } from '../../types';
 import { ApiError, requestJson } from './api';
 import { generateMockFeedback } from './mockFeedback';
 import { generateModelText, type ModelText } from './modelText';
@@ -119,6 +119,82 @@ export async function requestModelText(
     return {
       data: generateModelText(task, words),
       degraded: `${reason(error)}，示范短文改由词本例句拼接`,
+    };
+  }
+}
+
+export interface IntakeCard {
+  headword: string;
+  pos: string;
+  meaningZh: string;
+  theme: string;
+  examples: string[];
+  collocations: Collocation[];
+}
+
+const MAX_INTAKE = 30;
+
+function text(value: unknown, max: number): string {
+  return typeof value === 'string' ? value.trim().slice(0, max) : '';
+}
+
+function readIntakeCards(value: unknown): IntakeCard[] {
+  const raw = (value as Record<string, unknown>)?.words;
+  if (!Array.isArray(raw) || !raw.length) throw new Error('invalid_intake');
+  return raw
+    .map((item) => {
+      const card = (item ?? {}) as Record<string, unknown>;
+      const examples = Array.isArray(card.examples)
+        ? card.examples.filter((e): e is string => typeof e === 'string' && !!e.trim()).slice(0, 2)
+        : [];
+      const collocations = Array.isArray(card.collocations)
+        ? card.collocations
+            .map((entry) => {
+              const c = (entry ?? {}) as Record<string, unknown>;
+              return { phrase: text(c.phrase, 80), gloss: text(c.gloss, 60) };
+            })
+            .filter((c) => c.phrase)
+            .slice(0, 4)
+        : [];
+      return {
+        headword: text(card.headword, 64),
+        pos: text(card.pos, 16),
+        meaningZh: text(card.meaningZh, 160),
+        theme: text(card.theme, 24),
+        examples,
+        collocations,
+      };
+    })
+    .filter((card) => card.headword)
+    .slice(0, MAX_INTAKE);
+}
+
+/** 网关不可用时的退路：不猜释义，只把词头切出来，并如实告诉用户这次没走 AI。 */
+function splitLocally(raw: string): IntakeCard[] {
+  const seen = new Set<string>();
+  const cards: IntakeCard[] = [];
+  for (const chunk of raw.split(/[\n,;，；、]+/)) {
+    const headword = chunk.replace(/[*`>#]+/g, ' ').replace(/^\s*\d+[.)、]\s*/, '').trim().slice(0, 64);
+    if (!headword || !/[a-zA-Z]/.test(headword)) continue;
+    const key = headword.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    cards.push({ headword, pos: '', meaningZh: '', theme: '', examples: [], collocations: [] });
+    if (cards.length >= MAX_INTAKE) break;
+  }
+  return cards;
+}
+
+export async function requestIntake(raw: string): Promise<AiResult<IntakeCard[]>> {
+  try {
+    const data = await post('intake', { raw });
+    const cards = readIntakeCards(data);
+    if (!cards.length) throw new Error('invalid_intake');
+    return { data: cards, degraded: null };
+  } catch (error) {
+    return {
+      data: splitLocally(raw),
+      degraded: `${reason(error)}，已本地切出词头，释义与例句留空`,
     };
   }
 }

@@ -18,7 +18,14 @@ globalThis.fetch = async (url, options) => {
           .map((s) => s.trim())
           .filter(Boolean)
           .slice(0, 30)
-          .map((headword) => ({ headword, pos: '', meaningZh: '', examples: [], collocations: [] })),
+          .map((headword) => ({
+            headword,
+            pos: '',
+            meaningZh: '',
+            theme: '本地假主题',
+            examples: [],
+            collocations: [],
+          })),
       }
     : isModelText
     ? {

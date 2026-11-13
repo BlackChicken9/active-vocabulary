@@ -2,6 +2,7 @@ import type { Feedback, MasteryStatus, Submission, Word, WordUsage, WritingTask 
 import { escapeHtml } from '../../escapeHtml';
 import { loadWords } from '../words/wordStore';
 import { requestFeedback, requestModelText } from './aiClient';
+import { importWords } from './intake';
 import { advanceMastery, markTraining, type MasteryChange } from './masteryUpdate';
 import { createTask, MAX_TARGET_WORDS, MIN_TARGET_WORDS, sentenceTarget, setStatus } from './taskStore';
 import type { ModelText } from './modelText';
@@ -57,9 +58,12 @@ export function mountWritingPanel(root: HTMLElement, onMasteryChanged: () => voi
   let feedback: Feedback | null = null;
   let advanced: MasteryChange[] = [];
   let draftText = '';
-  let busy: 'model' | 'self' | null = null;
+  let busy: 'model' | 'self' | 'intake' | null = null;
   let modelEngine: string | null = null;
   let feedbackEngine: string | null = null;
+  let intakeOpen = false;
+  let intakeRaw = '';
+  let intakeNote: string | null = null;
 
   function resetOutput(): void {
     model = null;
@@ -152,6 +156,31 @@ export function mountWritingPanel(root: HTMLElement, onMasteryChanged: () => voi
       ${feedbackBlock}`;
   }
 
+  /** 产品的正门：词库不是我们预设的，而是用户把自己正在背的词粘进来。 */
+  function intakeBlock(): string {
+    return `
+      <div class="intake">
+        <button type="button" id="intake-toggle" class="ghost">${
+          intakeOpen ? '收起粘贴导入' : '粘贴你正在背的词'
+        }</button>
+        ${
+          intakeOpen
+            ? `
+        <textarea id="intake-raw" rows="3" placeholder="直接粘贴：一串单词、一段带释义的笔记都行，不用管格式…">${escapeHtml(
+          intakeRaw,
+        )}</textarea>
+        <div class="row">
+          <button type="button" id="intake-run" ${
+            busy === 'intake' || !intakeRaw.trim() ? 'disabled' : ''
+          }>${busy === 'intake' ? 'AI 正在整理词卡…' : '整理成词卡'}</button>
+          <span class="hint">一次最多 30 条，已在词库里的词头会跳过</span>
+        </div>`
+            : ''
+        }
+        ${intakeNote ? `<p class="engine">${intakeNote}</p>` : ''}
+      </div>`;
+  }
+
   function render(): void {
     const words = loadWords();
     const active = task;
@@ -160,7 +189,12 @@ export function mountWritingPanel(root: HTMLElement, onMasteryChanged: () => voi
       <section class="panel">
         <h2>限定写作任务</h2>
         <p class="sub">勾选 ${MIN_TARGET_WORDS}~${MAX_TARGET_WORDS} 个想练的词，系统按词出题（当前 ${selected.length} 个）</p>
-        <div class="chips">${chips(words, selected, true)}</div>
+        ${intakeBlock()}
+        ${
+          words.length
+            ? `<div class="chips">${chips(words, selected, true)}</div>`
+            : '<p class="hint">词库还是空的：点上面「粘贴你正在背的词」，把你正在背的词粘进来。</p>'
+        }
         <div class="row">
           <button type="button" id="generate" ${enough ? '' : 'disabled'}>生成写作任务</button>
           ${enough ? '' : `<span class="hint">至少选 ${MIN_TARGET_WORDS} 个词</span>`}
@@ -202,6 +236,48 @@ export function mountWritingPanel(root: HTMLElement, onMasteryChanged: () => voi
         selected = selected.includes(id) ? selected.filter((s) => s !== id) : [...selected, id];
         render();
       });
+    });
+
+    root.querySelector<HTMLButtonElement>('#intake-toggle')?.addEventListener('click', () => {
+      if (busy) return;
+      intakeOpen = !intakeOpen;
+      render();
+    });
+
+    const rawBox = root.querySelector<HTMLTextAreaElement>('#intake-raw');
+    rawBox?.addEventListener('input', () => {
+      intakeRaw = rawBox.value;
+      const run = root.querySelector<HTMLButtonElement>('#intake-run');
+      if (run) run.disabled = busy === 'intake' || !intakeRaw.trim();
+    });
+
+    root.querySelector<HTMLButtonElement>('#intake-run')?.addEventListener('click', async () => {
+      if (busy || !intakeRaw.trim()) return;
+      busy = 'intake';
+      render();
+      const outcome = await importWords(intakeRaw);
+      const names = outcome.added
+        .slice(0, 6)
+        .map((word) => escapeHtml(word.headword))
+        .join('、');
+      const skippedLine = outcome.skipped.length
+        ? `；跳过 ${outcome.skipped.length} 个已在词库里的词`
+        : '';
+      const degradedLine = outcome.degraded
+        ? `<br>兜底原因：${escapeHtml(outcome.degraded)}`
+        : '';
+      intakeNote = outcome.added.length
+        ? `已加入 ${outcome.added.length} 个词：${names}${outcome.added.length > 6 ? ' 等' : ''}${skippedLine}，已替你勾好，可以直接生成任务。${degradedLine}`
+        : outcome.skipped.length
+          ? `没有新词入库：粘的 ${outcome.skipped.length} 个词头都已经在词库里了。`
+          : `没识别出词头，换一行一个词的写法再试一次。${degradedLine}`;
+      if (outcome.added.length) {
+        selected = outcome.added.slice(0, MAX_TARGET_WORDS).map((word) => word.id);
+        intakeRaw = '';
+      }
+      busy = null;
+      onMasteryChanged();
+      render();
     });
 
     root.querySelector<HTMLButtonElement>('#generate')?.addEventListener('click', () => {

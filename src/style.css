@@ -220,6 +220,18 @@ button:hover {
   flex-wrap: wrap;
 }
 
+.intake {
+  margin-bottom: 0.85rem;
+}
+
+.intake > button.ghost {
+  margin-top: 0;
+}
+
+.intake textarea {
+  margin-top: 0.5rem;
+}
+
 .chips {
   display: flex;
   flex-wrap: wrap;

@@ -174,9 +174,10 @@ function normalizeModelText(data: unknown, words: TargetWord[]) {
 function intakePrompt(): string {
   return [
     '你是英语词卡整理助手。用户会粘贴任意格式的内容：可能只是一串单词，也可能是带释义、派生词和例句的笔记。',
-    '只输出 JSON：{"words":[{"headword":"英文词头或短语","pos":"词性，如 v. / adj. / n. / 短语；原文没有就留空字符串","meaningZh":"简体中文释义","examples":["一句英文例句"],"collocations":[{"phrase":"英文搭配","gloss":"中文说明"}]}]}。',
+    '只输出 JSON：{"words":[{"headword":"英文词头或短语","pos":"词性，如 v. / adj. / n. / 短语；原文没有就留空字符串","meaningZh":"简体中文释义","theme":"这批词共同的话题，简体中文 2~6 个字，如「海洋与环境」；判断不出就留空字符串","examples":["一句英文例句"],"collocations":[{"phrase":"英文搭配","gloss":"中文说明"}]}]}。',
     '规则：原文已有的释义、派生词、例句照抄，不要改写；只有原文缺失时才由你补，补的例句要短、日常可用；',
-    '搭配必须是能整块复用的词块（如 early intervention），不要拿派生词充当搭配；词头去重；最多 30 条；不要输出解释。',
+    '搭配必须是能整块复用的词块（如 early intervention），不要拿派生词充当搭配；同一次粘贴的词尽量归到同一个 theme；',
+    '词头去重；最多 30 条；不要输出解释。',
   ].join('\n');
 }
 
@@ -198,6 +199,7 @@ function normalizeIntake(data: unknown) {
     headword: string;
     pos: string;
     meaningZh: string;
+    theme: string;
     examples: string[];
     collocations: { phrase: string; gloss: string }[];
   }[] = [];
@@ -222,6 +224,7 @@ function normalizeIntake(data: unknown) {
       headword,
       pos: asString(card.pos, 16) ?? '',
       meaningZh: asString(card.meaningZh, 160) ?? '',
+      theme: asString(card.theme, 24) ?? '',
       examples: asStringList(card.examples, 2, 4, 240),
       collocations,
     });
