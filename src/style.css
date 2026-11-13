@@ -263,6 +263,53 @@ button:disabled {
   color: #94a3b8;
 }
 
+.seg {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.9rem;
+  flex-wrap: wrap;
+}
+
+.seg-btn {
+  margin-top: 0;
+  background: #0f172a;
+  color: #cbd5e1;
+  border: 1px solid #334155;
+  font-weight: 500;
+}
+
+.seg-btn:hover {
+  background: #1e293b;
+}
+
+.seg-btn.on {
+  background: #0c4a6e;
+  border-color: #38bdf8;
+  color: #e2e8f0;
+}
+
+.passage {
+  border-left: 3px solid #38bdf8;
+  background: #0f172a;
+  border-radius: 8px;
+  padding: 0.75rem 0.9rem;
+}
+
+.passage .text {
+  margin: 0 0 0.6rem;
+  line-height: 1.6;
+}
+
+.passage .mastery {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.passage .hint {
+  display: block;
+  margin-top: 0.4rem;
+}
+
 @media (max-width: 720px) {
   body {
     display: block;
