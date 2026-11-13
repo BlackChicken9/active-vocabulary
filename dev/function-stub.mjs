@@ -9,7 +9,18 @@ globalThis.fetch = async (url, options) => {
   const system = body.messages[0].content;
   const user = body.messages[1].content;
   const isModelText = system.includes('示范答案');
-  const payload = isModelText
+  const isIntake = system.includes('词卡整理助手');
+  const payload = isIntake
+    ? {
+        // 假上游只会切分，不会补释义；正好用来验证「网关没给全字段时前端不能崩」。
+        words: user
+          .split(/[\n,;，；]+/)
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .slice(0, 30)
+          .map((headword) => ({ headword, pos: '', meaningZh: '', examples: [], collocations: [] })),
+      }
+    : isModelText
     ? {
         text: 'Running in the morning helps me alleviate stress before class. Reading one page a day lets me accumulate knowledge without noticing.',
         wordIds: [...system.matchAll(/id=(\w+)/g)].map((m) => m[1]),

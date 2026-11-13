@@ -99,4 +99,47 @@ assert.deepEqual(JSON.parse(await failed.text()), { ok: false, error: 'upstream_
 stubUpstream('模型今天不想说话');
 assert.equal((await configured(post('model-text', { words: WORDS, prompt: 'x' }))).status, 502);
 
-console.log('functions/handler.ts 全部 8 组断言通过');
+// 9. intake 正常路径：脏字段被清掉、词头去重、缺字段留空
+stubUpstream({
+  words: [
+    {
+      headword: 'ubiquitous',
+      pos: 'adj.',
+      meaningZh: '无处不在的',
+      examples: ['Phones are ubiquitous.'],
+      collocations: [{ phrase: 'ubiquitous in daily life', gloss: '在日常生活中无处不在' }],
+    },
+    { headword: '   ' },
+    { headword: 'UBIQUITOUS', meaningZh: '重复词头' },
+    { headword: 'bare', meaningZh: 123, examples: 'not an array', collocations: [{ gloss: '没有 phrase' }, 'junk'] },
+  ],
+});
+const intakeResult = await configured(post('intake', { raw: 'ubiquitous, bare' }));
+const intake = JSON.parse(await intakeResult.text());
+assert.equal(intakeResult.status, 200);
+assert.equal(intake.ok, true);
+assert.deepEqual(intake.words.map((w) => w.headword), ['ubiquitous', 'bare']);
+assert.deepEqual(intake.words[1], {
+  headword: 'bare',
+  pos: '',
+  meaningZh: '',
+  examples: [],
+  collocations: [],
+});
+assert.equal(intake.words[0].collocations[0].phrase, 'ubiquitous in daily life');
+assert.equal(upstreamCalls[0].options.body.includes('Phones are ubiquitous'), false);
+assert.equal(JSON.parse(upstreamCalls[0].options.body).messages[1].content, 'ubiquitous, bare');
+
+// 10. intake 入参与空结果
+stubUpstream({ words: [] });
+assert.equal((await configured(post('intake', {}))).status, 400);
+assert.equal((await configured(post('intake', { raw: '   ' }))).status, 400);
+assert.equal(upstreamCalls.length, 0);
+assert.equal((await configured(post('intake', { raw: 'accumulate' }))).status, 502);
+
+// 11. intake 词卡数量封顶 30
+stubUpstream({ words: Array.from({ length: 40 }, (_, i) => ({ headword: `word${i}` })) });
+const capped = JSON.parse(await (await configured(post('intake', { raw: 'x'.repeat(6000) }))).text());
+assert.equal(capped.words.length, 30);
+
+console.log('functions/handler.ts 全部 11 组断言通过');

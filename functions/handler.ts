@@ -15,6 +15,8 @@ const DEFAULT_BASE_URL = 'https://api.deepseek.com/v1';
 const DEFAULT_MODEL = 'deepseek-chat';
 const MAX_BODY = 12_000;
 const MAX_TEXT = 2_000;
+const MAX_RAW = 6_000;
+const MAX_CARDS = 30;
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -27,9 +29,10 @@ function clip(value: string, max: number): string {
   return value.length > max ? `${value.slice(0, max)}…` : value;
 }
 
-function route(pathname: string): 'feedback' | 'model-text' | null {
+function route(pathname: string): 'feedback' | 'model-text' | 'intake' | null {
   if (pathname.endsWith('/feedback')) return 'feedback';
   if (pathname.endsWith('/model-text')) return 'model-text';
+  if (pathname.endsWith('/intake')) return 'intake';
   return null;
 }
 
@@ -168,6 +171,66 @@ function normalizeModelText(data: unknown, words: TargetWord[]) {
   return { text, wordIds: ids.length ? ids : words.map((w) => w.id) };
 }
 
+function intakePrompt(): string {
+  return [
+    '你是英语词卡整理助手。用户会粘贴任意格式的内容：可能只是一串单词，也可能是带释义、派生词和例句的笔记。',
+    '只输出 JSON：{"words":[{"headword":"英文词头或短语","pos":"词性，如 v. / adj. / n. / 短语；原文没有就留空字符串","meaningZh":"简体中文释义","examples":["一句英文例句"],"collocations":[{"phrase":"英文搭配","gloss":"中文说明"}]}]}。',
+    '规则：原文已有的释义、派生词、例句照抄，不要改写；只有原文缺失时才由你补，补的例句要短、日常可用；',
+    '搭配必须是能整块复用的词块（如 early intervention），不要拿派生词充当搭配；词头去重；最多 30 条；不要输出解释。',
+  ].join('\n');
+}
+
+function asStringList(value: unknown, max: number, limit: number, itemMax: number): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .slice(0, limit)
+    .map((item) => asString(item, itemMax))
+    .filter((item): item is string => item !== null)
+    .slice(0, max);
+}
+
+/** 用户粘什么都有可能，所以这里逐条兜底：缺词头就丢掉，其余字段缺了给空值，不让前端拿到脏结构。 */
+function normalizeIntake(data: unknown) {
+  const record = (data ?? {}) as Record<string, unknown>;
+  const raw = Array.isArray(record.words) ? record.words : [];
+  const seen = new Set<string>();
+  const words: {
+    headword: string;
+    pos: string;
+    meaningZh: string;
+    examples: string[];
+    collocations: { phrase: string; gloss: string }[];
+  }[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const card = item as Record<string, unknown>;
+    const headword = asString(card.headword, 64);
+    if (!headword) continue;
+    const key = headword.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const collocations = (Array.isArray(card.collocations) ? card.collocations : [])
+      .slice(0, 4)
+      .map((entry) => {
+        if (!entry || typeof entry !== 'object') return null;
+        const phrase = asString((entry as Record<string, unknown>).phrase, 80);
+        if (!phrase) return null;
+        return { phrase, gloss: asString((entry as Record<string, unknown>).gloss, 60) ?? '' };
+      })
+      .filter((entry): entry is { phrase: string; gloss: string } => entry !== null);
+    words.push({
+      headword,
+      pos: asString(card.pos, 16) ?? '',
+      meaningZh: asString(card.meaningZh, 160) ?? '',
+      examples: asStringList(card.examples, 2, 4, 240),
+      collocations,
+    });
+    if (words.length >= MAX_CARDS) break;
+  }
+  if (!words.length) throw new Error('upstream_empty');
+  return { words };
+}
+
 export function createHandler(env: GatewayEnv = {}) {
   return async function handler(request: Request): Promise<Response> {
     const path = route(new URL(request.url).pathname);
@@ -178,8 +241,20 @@ export function createHandler(env: GatewayEnv = {}) {
     }
 
     const body = await readBody(request);
-    const words = body ? parseWords(body.words) : null;
-    if (!body || !words) return json({ ok: false, error: 'invalid_request' }, 400);
+    if (!body) return json({ ok: false, error: 'invalid_request' }, 400);
+
+    if (path === 'intake') {
+      const raw = asString(body.raw, MAX_RAW);
+      if (!raw) return json({ ok: false, error: 'invalid_request' }, 400);
+      try {
+        return json({ ok: true, ...normalizeIntake(await chat(env, intakePrompt(), raw)) });
+      } catch {
+        return json({ ok: false, error: 'upstream_unavailable' }, 502);
+      }
+    }
+
+    const words = parseWords(body.words);
+    if (!words) return json({ ok: false, error: 'invalid_request' }, 400);
 
     try {
       if (path === 'model-text') {
