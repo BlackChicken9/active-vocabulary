@@ -19,11 +19,14 @@ app.innerHTML = `
   </main>`;
 
 function renderWordbook(): void {
+  const words = loadWords();
   document.querySelector<HTMLElement>('#wordbook')!.innerHTML = `
     <h1>主动词库</h1>
     <p class="sub">把「认识」的词练成「会用」的词 · 词卡学习页与收词表单是队友 B 的任务位</p>
-    <ul class="words">
-      ${loadWords()
+    ${
+      words.length
+        ? `<ul class="words">
+      ${words
         .map(
           (w) => `
         <li class="word ${w.mastery}">
@@ -33,7 +36,9 @@ function renderWordbook(): void {
         </li>`,
         )
         .join('')}
-    </ul>`;
+    </ul>`
+        : '<p class="hint">词库还是空的：在右边把你正在背的词粘进来，这里会显示每个词的掌握度。</p>'
+    }`;
 }
 
 renderWordbook();

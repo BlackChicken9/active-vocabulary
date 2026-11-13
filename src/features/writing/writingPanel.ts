@@ -3,6 +3,7 @@ import { escapeHtml } from '../../escapeHtml';
 import { loadWords } from '../words/wordStore';
 import { requestFeedback, requestModelText } from './aiClient';
 import { importWords } from './intake';
+import { INTAKE_SAMPLE } from './intakeSample';
 import { advanceMastery, markTraining, type MasteryChange } from './masteryUpdate';
 import { createTask, MAX_TARGET_WORDS, MIN_TARGET_WORDS, sentenceTarget, setStatus } from './taskStore';
 import type { ModelText } from './modelText';
@@ -157,12 +158,13 @@ export function mountWritingPanel(root: HTMLElement, onMasteryChanged: () => voi
   }
 
   /** 产品的正门：词库不是我们预设的，而是用户把自己正在背的词粘进来。 */
-  function intakeBlock(): string {
+  function intakeBlock(empty: boolean): string {
     return `
       <div class="intake">
         <button type="button" id="intake-toggle" class="ghost">${
           intakeOpen ? '收起粘贴导入' : '粘贴你正在背的词'
         }</button>
+        ${empty ? '<button type="button" id="intake-sample" class="ghost">试试粘这段</button>' : ''}
         ${
           intakeOpen
             ? `
@@ -189,11 +191,11 @@ export function mountWritingPanel(root: HTMLElement, onMasteryChanged: () => voi
       <section class="panel">
         <h2>限定写作任务</h2>
         <p class="sub">勾选 ${MIN_TARGET_WORDS}~${MAX_TARGET_WORDS} 个想练的词，系统按词出题（当前 ${selected.length} 个）</p>
-        ${intakeBlock()}
+        ${intakeBlock(words.length === 0)}
         ${
           words.length
             ? `<div class="chips">${chips(words, selected, true)}</div>`
-            : '<p class="hint">词库还是空的：点上面「粘贴你正在背的词」，把你正在背的词粘进来。</p>'
+            : '<p class="hint">词库还是空的：点「粘贴你正在背的词」把词粘进来，或点「试试粘这段」用样例走一遍。</p>'
         }
         <div class="row">
           <button type="button" id="generate" ${enough ? '' : 'disabled'}>生成写作任务</button>
@@ -241,6 +243,13 @@ export function mountWritingPanel(root: HTMLElement, onMasteryChanged: () => voi
     root.querySelector<HTMLButtonElement>('#intake-toggle')?.addEventListener('click', () => {
       if (busy) return;
       intakeOpen = !intakeOpen;
+      render();
+    });
+
+    root.querySelector<HTMLButtonElement>('#intake-sample')?.addEventListener('click', () => {
+      if (busy) return;
+      intakeRaw = INTAKE_SAMPLE;
+      intakeOpen = true;
       render();
     });
 

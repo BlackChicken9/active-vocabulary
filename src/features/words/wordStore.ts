@@ -1,17 +1,11 @@
 import type { MasteryStatus, Word } from '../../types';
-import { day1Words } from './seedDay1';
 
 const STORAGE_KEY = 'tianchi.words';
 
-const seedWords: Word[] = day1Words;
-
+/** 词库不预设内容：首屏是空的，词全部来自用户自己粘贴导入。 */
 export function loadWords(): Word[] {
   const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(seedWords));
-    return [...seedWords];
-  }
-  return JSON.parse(raw) as Word[];
+  return raw ? (JSON.parse(raw) as Word[]) : [];
 }
 
 export function saveWords(words: Word[]): void {
