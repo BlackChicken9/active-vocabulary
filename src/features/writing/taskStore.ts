@@ -10,12 +10,13 @@ export function sentenceTarget(count: number): string {
   return count > 3 ? '1~3 句' : '1~2 句';
 }
 
-/** 词卡 source 形如「Day 1 · 海洋与环境」，取「·」后的主题名，题干跟着词走。 */
+/** 主题 = source 里「·」后面的部分（「Day 1 · 海洋与环境」「粘贴导入 · 科技与社会」）；没有「·」就说明这批词没主题，别把整串来源当主题用。 */
 function themeOf(word: Word): string | null {
   const source = word.source?.trim();
   if (!source) return null;
-  const parts = source.split('·');
-  const theme = (parts.length > 1 ? parts[parts.length - 1] : parts[0]).trim();
+  const at = source.lastIndexOf('·');
+  if (at < 0) return null;
+  const theme = source.slice(at + 1).trim();
   return theme || null;
 }
 
