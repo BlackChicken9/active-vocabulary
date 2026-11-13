@@ -4,6 +4,28 @@
 import { createServer } from 'node:http';
 import { createHandler } from '../functions/handler.ts';
 
+// 假上游只做粗切：剥掉 Markdown 装饰、中文释义和整句例句，模拟模型会给出的词头。
+function stubHeadwords(raw) {
+  const out = [];
+  for (const line of raw.split(/\n+/)) {
+    for (const chunk of line.split(/[,;:，；：、]+/)) {
+      const cleaned = chunk
+        .replace(/[*`>#•\-]+/g, ' ')
+        .replace(/^\s*\d+\s*[.)、]?\s*/, ' ')
+        .trim();
+      const cut = cleaned.search(/[\u4e00-\u9fff]|\s+(?:n|v|vt|vi|adj|adv|prep|conj|pron|pl)\.\s/i);
+      const head = (cut >= 0 ? cleaned.slice(0, cut) : cleaned)
+        .replace(/\s+/g, ' ')
+        .replace(/^[^A-Za-z]+/, '')
+        .replace(/[^A-Za-z0-9' -]+$/, '')
+        .trim();
+      if (!/^[A-Za-z]/.test(head) || head.length > 40 || head.split(/\s+/).length > 4) continue;
+      if (!out.some((h) => h.toLowerCase() === head.toLowerCase())) out.push(head);
+    }
+  }
+  return out.slice(0, 30);
+}
+
 globalThis.fetch = async (url, options) => {
   const body = JSON.parse(options.body);
   const system = body.messages[0].content;
@@ -12,28 +34,26 @@ globalThis.fetch = async (url, options) => {
   const isIntake = system.includes('词卡整理助手');
   const payload = isIntake
     ? {
-        // 假上游只会切分，不会补释义；正好用来验证「网关没给全字段时前端不能崩」。
-        words: user
-          .split(/[\n,;，；]+/)
-          .map((s) => s.trim())
-          .filter(Boolean)
-          .slice(0, 30)
-          .map((headword) => ({
-            headword,
-            pos: '',
-            meaningZh: '',
-            theme: '本地假主题',
-            examples: [],
-            collocations: [],
-          })),
+        // 假上游不会补释义；正好用来验证「网关没给全字段时前端不能崩」。
+        words: stubHeadwords(user).map((headword) => ({
+          headword,
+          pos: '',
+          meaningZh: '',
+          theme: '本地假主题',
+          examples: [],
+          collocations: [],
+        })),
       }
     : isModelText
     ? {
-        text: 'Running in the morning helps me alleviate stress before class. Reading one page a day lets me accumulate knowledge without noticing.',
-        wordIds: [...system.matchAll(/id=(\w+)/g)].map((m) => m[1]),
+        // 假上游不会写文章，只把目标词头串起来，用来验证高亮与 wordIds 回填。
+        text: `Model passage: ${[...system.matchAll(/id=([\w-]+) \| ([^｜]+)｜/g)]
+          .map((m) => m[2])
+          .join(', ')}. Each target word appears here so the highlight can be checked.`,
+        wordIds: [...system.matchAll(/id=([\w-]+)/g)].map((m) => m[1]),
       }
     : {
-        usages: [...system.matchAll(/id=(\w+) \| (\w+)/g)].map((m, i) => ({
+        usages: [...system.matchAll(/id=([\w-]+) \| ([^｜]+)｜/g)].map((m, i) => ({
           wordId: m[1],
           used: true,
           natural: i === 0,

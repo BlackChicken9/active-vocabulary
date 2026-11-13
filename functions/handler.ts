@@ -49,8 +49,9 @@ function parseWords(value: unknown): TargetWord[] | null {
     const record = item as Record<string, unknown>;
     const id = asString(record.id, 64);
     const headword = asString(record.headword, 64);
-    const meaningZh = asString(record.meaningZh, 120);
-    if (!id || !headword || !meaningZh) return null;
+    if (!id || !headword) return null;
+    // 粘贴导入的词可能还没有释义，缺了不该让整次点评失败。
+    const meaningZh = asString(record.meaningZh, 120) ?? '';
     const collocations = Array.isArray(record.collocations)
       ? record.collocations
           .map((c) =>
@@ -190,6 +191,9 @@ function asStringList(value: unknown, max: number, limit: number, itemMax: numbe
     .slice(0, max);
 }
 
+/** 词头只允许英文、空格与常见标点：模型把整行笔记、例句或中文释义当词头时直接丢掉，别污染用户词库。 */
+const HEADWORD_OK = /^[A-Za-z](?:[A-Za-z0-9'’ -]{0,38}[A-Za-z0-9'’.])?$/;
+
 /** 用户粘什么都有可能，所以这里逐条兜底：缺词头就丢掉，其余字段缺了给空值，不让前端拿到脏结构。 */
 function normalizeIntake(data: unknown) {
   const record = (data ?? {}) as Record<string, unknown>;
@@ -207,7 +211,7 @@ function normalizeIntake(data: unknown) {
     if (!item || typeof item !== 'object') continue;
     const card = item as Record<string, unknown>;
     const headword = asString(card.headword, 64);
-    if (!headword) continue;
+    if (!headword || !HEADWORD_OK.test(headword)) continue;
     const key = headword.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);

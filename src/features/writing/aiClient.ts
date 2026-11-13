@@ -169,18 +169,41 @@ function readIntakeCards(value: unknown): IntakeCard[] {
     .slice(0, MAX_INTAKE);
 }
 
+/** 释义通常从中文或词性缩写开始，前面那段才是词头。 */
+const POS_MARKER = /\s+(?:n|v|vt|vi|adj|adv|prep|conj|pron|pl)\.\s/i;
+
+function headwordFrom(chunk: string): string {
+  const cleaned = chunk
+    .replace(/[*`>#•\-]+/g, ' ')
+    .replace(/^\s*\d+\s*[.)、]?\s*/, ' ')
+    .trim();
+  const cuts = [cleaned.search(/[\u4e00-\u9fff]/), cleaned.search(POS_MARKER)].filter(
+    (index) => index >= 0,
+  );
+  const head = (cuts.length ? cleaned.slice(0, Math.min(...cuts)) : cleaned)
+    .replace(/\s+/g, ' ')
+    .replace(/^[^A-Za-z]+/, '')
+    .replace(/[^A-Za-z0-9' -]+$/, '')
+    .trim();
+  if (!/[A-Za-z]/.test(head) || head.length > 40) return '';
+  // 四个词以上基本是例句，不是词头。
+  return head.split(/\s+/).length > 4 ? '' : head;
+}
+
 /** 网关不可用时的退路：不猜释义，只把词头切出来，并如实告诉用户这次没走 AI。 */
 function splitLocally(raw: string): IntakeCard[] {
   const seen = new Set<string>();
   const cards: IntakeCard[] = [];
-  for (const chunk of raw.split(/[\n,;，；、]+/)) {
-    const headword = chunk.replace(/[*`>#]+/g, ' ').replace(/^\s*\d+[.)、]\s*/, '').trim().slice(0, 64);
-    if (!headword || !/[a-zA-Z]/.test(headword)) continue;
-    const key = headword.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    cards.push({ headword, pos: '', meaningZh: '', theme: '', examples: [], collocations: [] });
-    if (cards.length >= MAX_INTAKE) break;
+  for (const line of raw.split(/\n+/)) {
+    for (const chunk of line.split(/[,;:，；：、]+/)) {
+      const headword = headwordFrom(chunk);
+      if (!headword) continue;
+      const key = headword.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      cards.push({ headword, pos: '', meaningZh: '', theme: '', examples: [], collocations: [] });
+      if (cards.length >= MAX_INTAKE) return cards;
+    }
   }
   return cards;
 }

@@ -74,7 +74,9 @@ export function generateMockFeedback(
       ? `本篇未用到「${word.headword}」。下一步：先用它造一句独立的话，再嵌进段落。`
       : natural
         ? `已用出「${word.headword}」，且命中搭配「${collocation}」，本篇计入会用。`
-        : `已用出「${word.headword}」，但没出现搭配「${collocation ?? word.headword}」，先记为练用中。`;
+        : collocation
+          ? `已用出「${word.headword}」，但没出现搭配「${collocation}」，先记为练用中。`
+          : `已用出「${word.headword}」，但词卡还没有搭配信息，先记为练用中。`;
     return { wordId: word.id, used, natural, note };
   });
   const usedCount = usages.filter((u) => u.used).length;

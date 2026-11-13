@@ -113,13 +113,18 @@ stubUpstream({
     { headword: '   ' },
     { headword: 'UBIQUITOUS', meaningZh: '重复词头' },
     { headword: 'bare', meaningZh: 123, theme: 456, examples: 'not an array', collocations: [{ gloss: '没有 phrase' }, 'junk'] },
+    { headword: '## 科技与生活' },
+    { headword: '- **1. ubiquitous**  adj. 无处不在的' },
+    { headword: 'Phones are ubiquitous in our daily lives. 手机在日常生活中无处不在。' },
+    { headword: 'a'.repeat(45) },
+    { headword: "it's hard to know for sure" },
   ],
 });
 const intakeResult = await configured(post('intake', { raw: 'ubiquitous, bare' }));
 const intake = JSON.parse(await intakeResult.text());
 assert.equal(intakeResult.status, 200);
 assert.equal(intake.ok, true);
-assert.deepEqual(intake.words.map((w) => w.headword), ['ubiquitous', 'bare']);
+assert.deepEqual(intake.words.map((w) => w.headword), ['ubiquitous', 'bare', "it's hard to know for sure"]);
 assert.deepEqual(intake.words[1], {
   headword: 'bare',
   pos: '',
@@ -145,4 +150,13 @@ stubUpstream({ words: Array.from({ length: 40 }, (_, i) => ({ headword: `word${i
 const capped = JSON.parse(await (await configured(post('intake', { raw: 'x'.repeat(6000) }))).text());
 assert.equal(capped.words.length, 30);
 
-console.log('functions/handler.ts 全部 11 组断言通过');
+// 12. 粘贴导入的词可能没有释义：feedback / model-text 不能因此拒绝请求
+stubUpstream({ usages: [{ wordId: 'bare', used: true, natural: true, note: '用得自然' }], accuracy: 90, overall: '不错' });
+const noGloss = [{ id: 'bare', headword: 'ubiquitous', meaningZh: '', collocations: [] }];
+const bareFeedback = await configured(post('feedback', { words: noGloss, text: 'Phones are ubiquitous.', taskId: 't2' }));
+assert.equal(bareFeedback.status, 200);
+assert.equal(JSON.parse(await bareFeedback.text()).feedback.usages[0].natural, true);
+stubUpstream({ text: 'Phones are ubiquitous.', wordIds: ['bare'] });
+assert.equal((await configured(post('model-text', { words: noGloss, prompt: '写一句' }))).status, 200);
+
+console.log('functions/handler.ts 全部 12 组断言通过');
