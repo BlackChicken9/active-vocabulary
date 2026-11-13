@@ -263,6 +263,12 @@ button:disabled {
   color: #94a3b8;
 }
 
+.engine {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  margin: 0.15rem 0 0.45rem;
+}
+
 .seg {
   display: flex;
   gap: 0.5rem;

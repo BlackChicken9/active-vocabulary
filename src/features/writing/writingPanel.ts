@@ -1,10 +1,10 @@
 import type { Feedback, MasteryStatus, Submission, Word, WritingTask } from '../../types';
 import { escapeHtml } from '../../escapeHtml';
 import { loadWords } from '../words/wordStore';
+import { requestFeedback, requestModelText } from './aiClient';
 import { advanceMastery, markTraining, type MasteryChange } from './masteryUpdate';
-import { generateMockFeedback } from './mockFeedback';
-import { generateModelText, type ModelText } from './modelText';
 import { createTask, MAX_TARGET_WORDS, MIN_TARGET_WORDS, sentenceTarget, setStatus } from './taskStore';
+import type { ModelText } from './modelText';
 
 const masteryZh: Record<MasteryStatus, string> = {
   passive: '认识',
@@ -37,6 +37,9 @@ export function mountWritingPanel(root: HTMLElement, onMasteryChanged: () => voi
   let feedback: Feedback | null = null;
   let advanced: MasteryChange[] = [];
   let draftText = '';
+  let busy: 'model' | 'self' | null = null;
+  let modelEngine: string | null = null;
+  let feedbackEngine: string | null = null;
 
   function resetOutput(): void {
     model = null;
@@ -45,6 +48,15 @@ export function mountWritingPanel(root: HTMLElement, onMasteryChanged: () => voi
     advanced = [];
     draftText = '';
     mode = 'self';
+    busy = null;
+    modelEngine = null;
+    feedbackEngine = null;
+  }
+
+  function engineLine(source: string | null): string {
+    return `<p class="engine">${
+      source ? `兜底原因：${escapeHtml(source)}` : '来源：AI 网关（非本地 mock）'
+    }</p>`;
   }
 
   function chips(words: Word[], ids: string[], interactive: boolean): string {
@@ -63,10 +75,12 @@ export function mountWritingPanel(root: HTMLElement, onMasteryChanged: () => voi
   }
 
   function renderModel(): string {
-    if (!model) return '';
+    if (busy === 'model') return '<p class="hint">AI 正在按题干写示范…</p>';
+    if (!model) return '<p class="hint">点上方「读 AI 示范短文」生成一段把目标词用出来的示范。</p>';
     return `
       <div class="passage">
         <p class="text">${escapeHtml(model.text)}</p>
+        ${engineLine(modelEngine)}
         <p class="mastery">${
           trained.length
             ? `示范已读，掌握度回写：${changeLine(trained)}`
@@ -81,6 +95,7 @@ export function mountWritingPanel(root: HTMLElement, onMasteryChanged: () => voi
       ? `
       <div class="feedback">
         <p class="score">用词得分 ${feedback.accuracy} · ${escapeHtml(feedback.overall)}</p>
+        ${engineLine(feedbackEngine)}
         <ul>${feedback.usages
           .map(
             (u) =>
@@ -98,7 +113,9 @@ export function mountWritingPanel(root: HTMLElement, onMasteryChanged: () => voi
       <p class="sub">写 ${sentenceTarget(task?.targetWordIds.length ?? 0)}，把 ${task?.targetWordIds.length ?? 0} 个目标词都用出来即可提交。</p>
       <textarea id="draft" rows="4" placeholder="写一两句英文，把目标词用进去…">${escapeHtml(draftText)}</textarea>
       <div class="row">
-        <button type="button" id="submit">提交并获取反馈</button>
+        <button type="button" id="submit" ${busy === 'self' ? 'disabled' : ''}>${
+          busy === 'self' ? 'AI 正在点评…' : '提交并获取反馈'
+        }</button>
         <span class="hint" id="count">${wordCount(draftText)} 词</span>
       </div>
       ${feedbackBlock}`;
@@ -149,6 +166,7 @@ export function mountWritingPanel(root: HTMLElement, onMasteryChanged: () => voi
 
     root.querySelectorAll<HTMLButtonElement>('.chips [data-id]').forEach((chip) => {
       chip.addEventListener('click', () => {
+        if (busy) return;
         const id = chip.dataset.id!;
         selected = selected.includes(id) ? selected.filter((s) => s !== id) : [...selected, id];
         render();
@@ -156,30 +174,39 @@ export function mountWritingPanel(root: HTMLElement, onMasteryChanged: () => voi
     });
 
     root.querySelector<HTMLButtonElement>('#generate')?.addEventListener('click', () => {
+      if (busy) return;
       task = createTask(loadWords(), selected);
       resetOutput();
       render();
     });
 
     root.querySelector<HTMLButtonElement>('#reset')?.addEventListener('click', () => {
+      if (busy) return;
       task = null;
       selected = [];
       resetOutput();
       render();
     });
 
-    root.querySelector<HTMLButtonElement>('#mode-model')?.addEventListener('click', () => {
-      if (!task) return;
+    root.querySelector<HTMLButtonElement>('#mode-model')?.addEventListener('click', async () => {
+      if (!task || busy) return;
+      const active = task;
+      mode = 'model';
       if (!model) {
-        model = generateModelText(task, loadWords());
-        trained = markTraining(model.wordIds);
+        busy = 'model';
+        render();
+        const result = await requestModelText(active, loadWords());
+        model = result.data;
+        modelEngine = result.degraded;
+        trained = markTraining(result.data.wordIds);
+        busy = null;
         onMasteryChanged();
       }
-      mode = 'model';
       render();
     });
 
     root.querySelector<HTMLButtonElement>('#mode-self')?.addEventListener('click', () => {
+      if (busy) return;
       mode = 'self';
       render();
     });
@@ -191,19 +218,24 @@ export function mountWritingPanel(root: HTMLElement, onMasteryChanged: () => voi
       if (count) count.textContent = `${wordCount(draftText)} 词`;
     });
 
-    root.querySelector<HTMLButtonElement>('#submit')?.addEventListener('click', () => {
-      if (!task) return;
-      const taskId = task.id;
+    root.querySelector<HTMLButtonElement>('#submit')?.addEventListener('click', async () => {
+      if (!task || busy) return;
+      const active = task;
       const submission: Submission = {
         id: crypto.randomUUID(),
-        taskId,
+        taskId: active.id,
         text: draftText,
         wordIdsUsed: [],
       };
-      feedback = generateMockFeedback(task, submission, loadWords());
-      advanced = advanceMastery(feedback);
-      setStatus(taskId, 'reviewed');
-      task = { ...task, status: 'reviewed' };
+      busy = 'self';
+      render();
+      const result = await requestFeedback(active, submission, loadWords());
+      feedback = result.data;
+      feedbackEngine = result.degraded;
+      advanced = advanceMastery(result.data);
+      setStatus(active.id, 'reviewed');
+      task = { ...active, status: 'reviewed' };
+      busy = null;
       onMasteryChanged();
       render();
     });
