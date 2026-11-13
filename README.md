@@ -6,9 +6,9 @@
 
 ## 核心闭环
 
-收词入词本（认识）→ 选词生成限定写作任务 → 写作 → AI 反馈（是否用出 / 是否地道 / 搭配纠正）→ 掌握度进阶（会用）
+收词入词本（认识）→ 勾选 2~5 个词生成限定写作任务 → 两条路：**读 AI 示范短文**（练用中）或**自己写 1~2 句**（AI 逐词判定是否用出、搭配是否地道）→ 掌握度进阶（会用）
 
-掌握度状态：`passive 认识` → `training 练用中` → `active 会用`，契约见 `src/types.ts`。
+掌握度状态：`passive 认识` → `training 练用中` → `active 会用`，契约见 `src/types.ts`。只升不降：读示范最多到 `training`，亲手写出来且用对搭配才计入 `active`。
 
 ## 赛事关键节点
 
@@ -27,6 +27,24 @@
 
 - 共享文件（`src/types.ts`、入口接线如 `src/main.ts`）的改动一律走 PR
 - **Mock 先行，互不阻塞**：写作侧先用 `mockFeedback.ts`，词库先用 localStorage；第二周换成真实 LLM + Sites 数据库
+
+## AI 网关（A2）
+
+前端只调同源 `/functions/v1/app/{feedback,model-text}`，密钥不进浏览器。
+
+| 路由 | 作用 | 入参 | 出参 |
+| --- | --- | --- | --- |
+| `feedback` | 逐词判定是否用出、是否地道 | `{ taskId, text, words[] }` | `{ ok, feedback }` |
+| `model-text` | 按题干生成示范短文 | `{ prompt, words[] }` | `{ ok, modelText }` |
+
+上游走 DashScope 兼容模式，环境变量：`DASHSCOPE_API_KEY`（必填 Secret）、`AI_MODEL`（默认 `qwen-plus`）、`AI_BASE_URL`（可选）。缺 key 时返回 `service_not_configured`，前端自动回落本地 mock 并在结果里写明兜底原因，不会假装调用了 AI。
+
+```bash
+node dev/handler-node-test.mjs   # 网关逻辑断言（本机无 Deno 也能跑）
+node dev/function-stub.mjs       # 本地假上游，不调模型，监听 127.0.0.1:8000
+npm run dev                      # vite 把 /functions/v1/app 代理到上面的端口
+deno run --allow-net --allow-env functions/index.ts   # 有 Deno 时的真实入口
+```
 
 ## 开发
 
