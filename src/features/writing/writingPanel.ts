@@ -1,4 +1,4 @@
-import type { Feedback, MasteryStatus, Submission, Word, WritingTask } from '../../types';
+import type { Feedback, MasteryStatus, Submission, Word, WordUsage, WritingTask } from '../../types';
 import { escapeHtml } from '../../escapeHtml';
 import { loadWords } from '../words/wordStore';
 import { requestFeedback, requestModelText } from './aiClient';
@@ -26,6 +26,26 @@ function wordCount(text: string): number {
 
 function changeLine(changes: MasteryChange[]): string {
   return changes.map((c) => `${escapeHtml(c.headword)} ${masteryZh[c.from]} → ${masteryZh[c.to]}`).join(' · ');
+}
+
+function usageTag(usage: WordUsage): string {
+  if (usage.used && usage.natural) return '用出且地道';
+  if (usage.used) return '用出但生硬';
+  return '没用到';
+}
+
+function clampScore(value: number): number {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+/** 在已转义的正文里把目标词包成 <mark>，headword 只含英文字母，转义后仍是原样。 */
+function highlight(text: string, headwords: string[]): string {
+  let html = escapeHtml(text);
+  for (const headword of headwords) {
+    const safe = escapeHtml(headword).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    html = html.replace(new RegExp(`\\b(${safe})\\b`, 'gi'), '<mark>$1</mark>');
+  }
+  return html;
 }
 
 export function mountWritingPanel(root: HTMLElement, onMasteryChanged: () => void): void {
@@ -74,12 +94,13 @@ export function mountWritingPanel(root: HTMLElement, onMasteryChanged: () => voi
       .join('');
   }
 
-  function renderModel(): string {
+  function renderModel(words: Word[]): string {
     if (busy === 'model') return '<p class="hint">AI 正在按题干写示范…</p>';
     if (!model) return '<p class="hint">点上方「读 AI 示范短文」生成一段把目标词用出来的示范。</p>';
+    const headwords = words.filter((w) => model!.wordIds.includes(w.id)).map((w) => w.headword);
     return `
       <div class="passage">
-        <p class="text">${escapeHtml(model.text)}</p>
+        <p class="text">${highlight(model.text, headwords)}</p>
         ${engineLine(modelEngine)}
         <p class="mastery">${
           trained.length
@@ -90,17 +111,27 @@ export function mountWritingPanel(root: HTMLElement, onMasteryChanged: () => voi
       </div>`;
   }
 
-  function renderSelf(): string {
+  function renderSelf(words: Word[]): string {
     const feedbackBlock = feedback
       ? `
       <div class="feedback">
-        <p class="score">用词得分 ${feedback.accuracy} · ${escapeHtml(feedback.overall)}</p>
+        <div class="scoreline">
+          <span class="score">用词得分 ${clampScore(feedback.accuracy)}</span>
+          <span class="bar" role="img" aria-label="用词得分 ${clampScore(feedback.accuracy)} 分（满分 100）">
+            <span class="fill" style="width:${clampScore(feedback.accuracy)}%"></span>
+          </span>
+        </div>
+        <p class="overall">${escapeHtml(feedback.overall)}</p>
         ${engineLine(feedbackEngine)}
-        <ul>${feedback.usages
-          .map(
-            (u) =>
-              `<li class="${u.used && u.natural ? 'ok' : u.used ? 'warn' : 'miss'}">${escapeHtml(u.note)}</li>`,
-          )
+        <ul class="usage">${feedback.usages
+          .map((u) => {
+            const headword = words.find((w) => w.id === u.wordId)?.headword ?? u.wordId;
+            return `<li class="${u.used && u.natural ? 'ok' : u.used ? 'warn' : 'miss'}">
+              <span class="hw">${escapeHtml(headword)}</span>
+              <span class="tag">${usageTag(u)}</span>
+              <span class="note">${escapeHtml(u.note)}</span>
+            </li>`;
+          })
           .join('')}</ul>
         <p class="mastery ${advanced.length ? '' : 'none'}">${
           advanced.length
@@ -152,7 +183,7 @@ export function mountWritingPanel(root: HTMLElement, onMasteryChanged: () => voi
           <button type="button" id="mode-model" class="seg-btn ${mode === 'model' ? 'on' : ''}">读 AI 示范短文</button>
           <button type="button" id="mode-self" class="seg-btn ${mode === 'self' ? 'on' : ''}">我自己写句子</button>
         </div>
-        ${mode === 'model' ? renderModel() : renderSelf()}`
+        ${mode === 'model' ? renderModel(words) : renderSelf(words)}`
             : '<p class="hint">先在上方勾选目标词，再生成任务。</p>'
         }
         ${

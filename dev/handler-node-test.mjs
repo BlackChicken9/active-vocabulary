@@ -35,7 +35,7 @@ function post(path, body) {
   });
 }
 
-const configured = createHandler({ DASHSCOPE_API_KEY: 'sk-test' });
+const configured = createHandler({ LLM_API_KEY: 'sk-test' });
 const unconfigured = createHandler({});
 
 // 1. 路由与方法
@@ -73,7 +73,8 @@ assert.equal(feedback.feedback.usages.length, 2);
 assert.deepEqual(feedback.feedback.usages.map((u) => u.wordId), ['alleviate', 'leverage']);
 assert.equal(feedback.feedback.accuracy, 100);
 assert.equal(feedback.feedback.taskId, 't1');
-assert.match(upstreamCalls[0].url, /dashscope\.aliyuncs\.com\/compatible-mode\/v1\/chat\/completions$/);
+assert.match(upstreamCalls[0].url, /api\.deepseek\.com\/v1\/chat\/completions$/);
+assert.match(upstreamCalls[0].options.headers['user-agent'], /Windows/);
 assert.match(upstreamCalls[0].options.headers.authorization, /^Bearer sk-test$/);
 
 // 5. 代码围栏包裹的 JSON 也能解析

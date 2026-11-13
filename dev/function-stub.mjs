@@ -30,7 +30,7 @@ globalThis.fetch = async (url, options) => {
   );
 };
 
-const handler = createHandler({ DASHSCOPE_API_KEY: 'sk-local-stub-not-real' });
+const handler = createHandler({ LLM_API_KEY: 'sk-local-stub-not-real' });
 
 createServer(async (req, res) => {
   const headers = new Headers();

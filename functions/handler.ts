@@ -1,5 +1,5 @@
 export interface GatewayEnv {
-  DASHSCOPE_API_KEY?: string;
+  LLM_API_KEY?: string;
   AI_MODEL?: string;
   AI_BASE_URL?: string;
 }
@@ -11,8 +11,8 @@ interface TargetWord {
   collocations: string[];
 }
 
-const DEFAULT_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
-const DEFAULT_MODEL = 'qwen-plus';
+const DEFAULT_BASE_URL = 'https://api.deepseek.com/v1';
+const DEFAULT_MODEL = 'deepseek-chat';
 const MAX_BODY = 12_000;
 const MAX_TEXT = 2_000;
 
@@ -76,7 +76,9 @@ async function chat(env: GatewayEnv, prompt: string, user: string): Promise<unkn
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      authorization: `Bearer ${env.DASHSCOPE_API_KEY}`,
+      authorization: `Bearer ${env.LLM_API_KEY}`,
+      // 运行时 fetch 默认不带 UA，这里显式给一个可识别的桌面端标识。
+      'user-agent': 'active-vocab-sites/1.0 (Windows)',
     },
     body: JSON.stringify({
       model: env.AI_MODEL || DEFAULT_MODEL,
@@ -171,7 +173,7 @@ export function createHandler(env: GatewayEnv = {}) {
     const path = route(new URL(request.url).pathname);
     if (!path) return json({ ok: false, error: 'not_found' }, 404);
     if (request.method !== 'POST') return json({ ok: false, error: 'method_not_allowed' }, 405);
-    if (!env.DASHSCOPE_API_KEY?.trim()) {
+    if (!env.LLM_API_KEY?.trim()) {
       return json({ ok: false, error: 'service_not_configured' }, 503);
     }
 

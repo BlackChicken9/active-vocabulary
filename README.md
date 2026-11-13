@@ -37,7 +37,7 @@
 | `feedback` | 逐词判定是否用出、是否地道 | `{ taskId, text, words[] }` | `{ ok, feedback }` |
 | `model-text` | 按题干生成示范短文 | `{ prompt, words[] }` | `{ ok, modelText }` |
 
-上游走 DashScope 兼容模式，环境变量：`DASHSCOPE_API_KEY`（必填 Secret）、`AI_MODEL`（默认 `qwen-plus`）、`AI_BASE_URL`（可选）。缺 key 时返回 `service_not_configured`，前端自动回落本地 mock 并在结果里写明兜底原因，不会假装调用了 AI。
+上游走 DeepSeek 的 OpenAI 兼容接口（`https://api.deepseek.com/v1`），环境变量：`API_KEY`（必填 Secret，填 DeepSeek 的 key）、`AI_MODEL`（默认 `deepseek-chat`）、`AI_BASE_URL`（可选，换服务商时用）。缺 key 时返回 `service_not_configured`，前端自动回落本地 mock 并在结果里写明兜底原因，不会假装调用了 AI。
 
 ```bash
 node dev/handler-node-test.mjs   # 网关逻辑断言（本机无 Deno 也能跑）
