@@ -145,6 +145,124 @@ button:hover {
   color: #f87171;
 }
 
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.chip {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid #334155;
+  border-radius: 999px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font: inherit;
+  font-weight: 400;
+  cursor: pointer;
+}
+
+.chip:hover {
+  border-color: #38bdf8;
+  background: #0f172a;
+}
+
+.chip.on {
+  border-color: #38bdf8;
+  background: #0c4a6e;
+}
+
+.chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.chip .zh {
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.ghost {
+  background: #334155;
+  color: #e2e8f0;
+}
+
+button.ghost:hover {
+  background: #475569;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.hint {
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+.task {
+  border: 1px solid #334155;
+  border-radius: 10px;
+  padding: 0.75rem 0.9rem;
+  margin-bottom: 0.9rem;
+}
+
+.task h3 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 1rem;
+  margin: 0 0 0.4rem;
+}
+
+.prompt {
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: #cbd5e1;
+  margin: 0 0 0.6rem;
+}
+
+.targets {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+.mastery {
+  font-size: 0.85rem;
+  color: #4ade80;
+  border-top: 1px dashed #334155;
+  padding-top: 0.6rem;
+}
+
+.mastery.none {
+  color: #94a3b8;
+}
+
 @media (max-width: 720px) {
   body {
     display: block;
