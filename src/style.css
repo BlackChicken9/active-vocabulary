@@ -1140,11 +1140,15 @@ textarea:focus {
   gap: var(--s-3);
 }
 
-.passage__text {
+/* 整段视图：英文和译文在同一块里，一条细线分隔，读起来是一段话的两种语言，不是两张卡。 */
+.passage__pair {
   padding: var(--s-4) var(--s-5);
   border-radius: var(--r-md);
   background: color-mix(in oklab, var(--bg) 62%, var(--card));
   border-left: 2px solid color-mix(in oklab, var(--accent) 70%, transparent);
+}
+
+.passage__text {
   font-size: var(--t-lead);
   line-height: 1.85;
   letter-spacing: 0;
@@ -1159,10 +1163,10 @@ textarea:focus {
   font-weight: 500;
 }
 
-/* 整段视图的译文压在英文下面一档：颜色与字号都退一步，别和原文抢读序。 */
 .passage__zh {
-  margin: var(--s-2) 0 0;
-  padding: 0 var(--s-5);
+  margin: var(--s-3) 0 0;
+  padding-top: var(--s-3);
+  border-top: 1px solid color-mix(in oklab, var(--ink) 12%, transparent);
   color: var(--muted);
   font-size: var(--t-small);
   line-height: 1.85;
@@ -2332,8 +2336,11 @@ textarea:focus {
     grid-column: 1 / -1;
   }
 
-  .passage__text {
+  .passage__pair {
     padding: var(--s-4);
+  }
+
+  .passage__text {
     font-size: var(--t-body);
   }
 

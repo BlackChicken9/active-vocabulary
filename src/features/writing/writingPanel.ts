@@ -161,7 +161,7 @@ export function mountWritingPanel(
   let explain: Explanation | null = null;
   let explainBusy = false;
   let explainEngine: string | null = null;
-  let passageView: 'whole' | 'sentences' = 'sentences';
+  let passageView: 'whole' | 'sentences' = 'whole';
   let closedNotes = new Set<number>();
   let notePending = new Set<number>();
   let noteError = new Map<number, string>();
@@ -479,12 +479,12 @@ export function mountWritingPanel(
     }${missing ? ` · 还有 ${missing} 句待讲` : ''}</p>`;
   }
 
-  /** 整段视图也补一段中文：拿逐句译文按序拼，没讲齐就不硬拼半截糊弄读者。 */
-  function wholeTranslation(notes: SentenceNote[], busy: boolean): string {
+  /** 整段视图的译文和英文在同一块里：拿逐句译文按序拼，没讲齐就不硬拼半截糊弄读者。 */
+  function wholeTranslation(notes: SentenceNote[]): string {
     const done = notes.filter((note) => note.zh);
-    if (!done.length) return busy ? '<p class="hint">中文译文生成中…</p>' : '';
+    if (!done.length) return '';
     if (done.length < notes.length) {
-      return `<p class="hint">译文还差 ${notes.length - done.length} 句，切到「逐句讲解」点那一句重试。</p>`;
+      return `<p class="passage__zh">译文还差 ${notes.length - done.length} 句，切到「逐句讲解」点那一句重试。</p>`;
     }
     const joined = done
       .map((note) => {
@@ -530,10 +530,12 @@ export function mountWritingPanel(
         </div>
         ${
           passageView === 'whole'
-            ? `<p class="passage__text">${sentenceBody(model.text, [], 'w', keys)}</p>${wholeTranslation(
-                notes,
-                explainBusy,
-              )}`
+            ? `<div class="passage__pair"><p class="passage__text">${sentenceBody(
+                model.text,
+                [],
+                'w',
+                keys,
+              )}</p>${wholeTranslation(notes)}</div>`
             : `<ol class="sents">${notes.map((note, index) => sentenceCard(note, index, keys)).join('')}</ol>`
         }
         <p class="statsline">${statsLine(model.text, spec)}</p>
@@ -828,8 +830,8 @@ export function mountWritingPanel(
       render();
       const result = await requestModelText(active, loadWords());
       model = result.data;
-      // 新示范一落地就回到「逐句讲解」：译文与结构是这一步的主角，整段留给想连着读的人自己切。
-      passageView = 'sentences';
+      // 新示范一落地先看整段：连着把这段话读完，再切「逐句讲解」逐句拆。
+      passageView = 'whole';
       modelEngine = result.degraded;
       trained = markTraining(result.data.wordIds);
       busy = null;
