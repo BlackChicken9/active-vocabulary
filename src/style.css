@@ -1224,6 +1224,19 @@ textarea:focus {
   margin-left: auto;
 }
 
+/* 同一行的控件必须等高：读法两档是 44px，「保存这篇」「只看英文」不能矮一截看着像另一组东西。 */
+.reader__bar .btn--sm,
+.scoreline .btn--sm {
+  height: var(--btn-h);
+}
+
+.reader__bar .saved__tag {
+  display: inline-flex;
+  align-items: center;
+  height: var(--btn-h);
+  padding: 0 var(--s-4);
+}
+
 .seg--sm .seg-btn {
   min-width: 0;
   padding: 6px var(--s-4);
@@ -1845,6 +1858,94 @@ textarea:focus {
   background: color-mix(in oklab, var(--bg) 62%, var(--card));
   font-size: var(--t-body);
   line-height: 1.8;
+}
+
+/* 讲解快照：英文沿用写作屏的 .part 成分色带，下面两行是译文与结构，成分按顺序列成中性标签。 */
+.saved__notes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  margin-top: var(--s-4);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--line);
+}
+
+.saved__notes-h {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--t-label);
+}
+
+.saved__sents {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.saved__note {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--s-2) var(--s-3);
+}
+
+.saved__note > *:not(.saved__no) {
+  grid-column: 2;
+}
+
+.saved__no {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--t-label);
+}
+
+.saved__en {
+  margin: 0;
+  line-height: 1.9;
+}
+
+.saved__zh {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--t-small);
+  line-height: 1.7;
+}
+
+.saved__zh b {
+  margin-right: var(--s-2);
+  color: var(--ink);
+  font-weight: 500;
+  font-size: var(--t-label);
+}
+
+.saved__parts,
+.saved__gloss {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+}
+
+.saved__part,
+.saved__word {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-btn);
+  background: color-mix(in oklab, var(--ink) 4%, transparent);
+  font-size: var(--t-label);
+  line-height: 1.5;
+}
+
+.saved__part b,
+.saved__word b {
+  color: var(--muted);
+  font-weight: 500;
 }
 
 .busy {

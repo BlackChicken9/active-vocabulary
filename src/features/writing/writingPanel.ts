@@ -15,7 +15,7 @@ import {
   taskLength,
 } from './passageLength';
 import { applyLength, createTask, MAX_TARGET_WORDS, MIN_TARGET_WORDS, setStatus } from './taskStore';
-import { addSaved, hasSaved, savedFeedback, type SavedKind } from './savedStore';
+import { addSaved, hasSaved, savedFeedback, savedTerms, type SavedKind } from './savedStore';
 import type { ModelText } from './modelText';
 import { createWordPopover } from './wordPopover';
 
@@ -850,6 +850,9 @@ export function mountWritingPanel(
         const active = task;
         const kind = btn.dataset.kind as SavedKind;
         if (kind === 'model' && model) {
+          // 讲解已经讲出东西就连快照一起存；纯本地拼的那份不算，留给习作集「补分析」。
+          const snapshot =
+            explain && explain.sentences.some((note) => note.zh || note.structure) ? explain : null;
           addSaved({
             kind,
             title: active.title,
@@ -859,6 +862,8 @@ export function mountWritingPanel(
             accuracy: null,
             overall: '',
             usages: [],
+            terms: savedTerms(loadWords(), active.targetWordIds),
+            explanation: snapshot,
           });
         } else if (kind === 'mine' && feedback) {
           addSaved({
@@ -868,6 +873,7 @@ export function mountWritingPanel(
             text: feedback.submittedText,
             zh: '',
             ...savedFeedback(feedback, loadWords()),
+            terms: savedTerms(loadWords(), active.targetWordIds),
           });
         }
         onSavedChange();
