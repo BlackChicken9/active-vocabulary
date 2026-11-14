@@ -54,13 +54,13 @@ app.innerHTML = `
   </main>
   <footer class="foot">
     <div class="foot__in">
-      <span>词库与任务只存在这台设备的浏览器里。</span>
+      <span>词库、任务与习作集只存在这台设备的浏览器里，不上传。</span>
       <div class="keyrow">
         <span class="keyrow__state" id="key-state" role="status"></span>
-        <label class="sr-only" for="model-key">模型密钥</label>
+        <label class="sr-only" for="model-key">DeepSeek 密钥</label>
         <input class="wb-input keyrow__input" id="model-key" type="password" autocomplete="off"
-               spellcheck="false" placeholder="粘贴你自己的模型密钥"
-               title="只存在这台设备的浏览器里，随请求交给本站网关；共享电脑上别用">
+               spellcheck="false" placeholder="粘贴你自己的 DeepSeek 密钥（sk-…）"
+               title="DeepSeek 开放平台申请；只存在这台设备的浏览器里，随请求交给本站网关，共享电脑上别用">
         <button type="button" class="btn btn--sm btn--secondary" id="key-save">保存</button>
         <button type="button" class="btn btn--sm btn--secondary" id="key-clear" hidden>清除</button>
       </div>
@@ -98,7 +98,7 @@ function renderTally(): void {
 
 renderTally();
 /**
- * 模型密钥：粘了自己的 key 就走自己的额度，没粘就用站点 Secret。
+ * DeepSeek 密钥：粘了自己的 key 就走自己的额度，没粘就用站点 Secret。
  * 值只进 localStorage 和请求头，输入框 type=password、保存即清空，界面只留尾号。
  */
 function mountKeyRow(): void {
@@ -109,7 +109,8 @@ function mountKeyRow(): void {
 
   function show(message?: string, warn = false): void {
     const key = loadModelKey();
-    state.textContent = message ?? (key ? `当前用你的密钥（尾号 ${keyTail(key)}）` : '当前用站点密钥');
+    state.textContent =
+      message ?? (key ? `当前用你的 DeepSeek 密钥（尾号 ${keyTail(key)}）` : '当前用站点 DeepSeek 密钥');
     state.classList.toggle('warn', warn);
     clearBtn.hidden = !key;
   }
@@ -120,7 +121,7 @@ function mountKeyRow(): void {
       show();
       return;
     }
-    show(input.value.trim() ? '密钥格式不对，检查有没有多复制空格' : '先粘贴密钥再保存', true);
+    show(input.value.trim() ? 'DeepSeek 密钥格式不对，检查有没有多复制空格' : '先粘贴 DeepSeek 密钥再保存', true);
   }
 
   saveBtn.addEventListener('click', save);
@@ -131,7 +132,7 @@ function mountKeyRow(): void {
   });
   clearBtn.addEventListener('click', () => {
     clearModelKey();
-    show('已改用站点密钥');
+    show('已改用站点 DeepSeek 密钥');
   });
   show();
 }

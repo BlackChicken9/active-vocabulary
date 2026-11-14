@@ -26,9 +26,9 @@ export interface AiResult<T> {
 }
 
 const FALLBACK_MESSAGES: Record<string, string> = {
-  service_not_configured: 'AI 网关未配置密钥',
-  model_key_invalid: '你的模型密钥格式不对（页脚可改）',
-  model_key_rejected: '你的模型密钥被上游拒绝（页脚可换）',
+  service_not_configured: '网关没配 DeepSeek 密钥',
+  model_key_invalid: '你的 DeepSeek 密钥格式不对（页脚可改）',
+  model_key_rejected: '你的 DeepSeek 密钥被拒（页脚可换）',
   upstream_unavailable: 'AI 网关调用上游失败',
   invalid_request: 'AI 网关拒绝了请求参数',
   access_denied: '没有访问 AI 网关的权限',
@@ -224,13 +224,17 @@ function readExplanation(value: unknown, source: string): Explanation {
   return { sentences, glossary };
 }
 
-export async function requestExplain(
-  task: WritingTask,
-  source: string,
-  words: Word[],
-): Promise<AiResult<Explanation>> {
+/** 讲解只认网关契约里的词形；补分析时词卡可能已删，用存下来的目标词凑同一份。 */
+export interface ExplainWord {
+  id: string;
+  headword: string;
+  meaningZh: string;
+  collocations: Collocation[];
+}
+
+async function explainCall(source: string, words: ExplainWord[]): Promise<AiResult<Explanation>> {
   try {
-    const data = await post('explain', { text: source, words: targets(task, words) });
+    const data = await post('explain', { text: source, words });
     return { data: readExplanation(data, source), degraded: null, model: modelOf(data) };
   } catch (error) {
     return {
@@ -239,6 +243,30 @@ export async function requestExplain(
       model: null,
     };
   }
+}
+
+export async function requestExplain(
+  task: WritingTask,
+  source: string,
+  words: Word[],
+): Promise<AiResult<Explanation>> {
+  return explainCall(source, targets(task, words));
+}
+
+/** 习作集里的补分析：没有任务，只有当时存下的正文与目标词。 */
+export function requestExplainTerms(
+  source: string,
+  terms: { headword: string; meaningZh: string }[],
+): Promise<AiResult<Explanation>> {
+  return explainCall(
+    source,
+    terms.slice(0, 8).map((term) => ({
+      id: term.headword,
+      headword: term.headword,
+      meaningZh: term.meaningZh,
+      collocations: [],
+    })),
+  );
 }
 
 export async function requestGloss(term: string, sentence: string): Promise<AiResult<GlossEntry>> {
