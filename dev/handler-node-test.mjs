@@ -182,7 +182,7 @@ assert.match(systemPrompt, /12~12 句英文（约 10~400 词）/);
 stubUpstream({ text: 'x', wordIds: [] });
 await configured(post('model-text', { words: WORDS, prompt: 'x' }));
 systemPrompt = JSON.parse(upstreamCalls[0].options.body).messages[0].content;
-assert.match(systemPrompt, /2~4 句英文（约 28~72 词）/);
+assert.match(systemPrompt, /2~3 句英文（约 24~48 词）/);
 
 // 14. 长示范不被旧的 1200 字上限截断
 const longText = 'A very long sentence about daily practice. '.repeat(60);

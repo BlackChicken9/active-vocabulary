@@ -15,16 +15,7 @@ import {
   taskLength,
 } from './passageLength';
 import { applyLength, createTask, MAX_TARGET_WORDS, MIN_TARGET_WORDS, setStatus } from './taskStore';
-import {
-  addSaved,
-  hasSaved,
-  loadSaved,
-  removeSaved,
-  savedClip,
-  savedFeedback,
-  type SavedKind,
-  type SavedPassage,
-} from './savedStore';
+import { addSaved, hasSaved, savedFeedback, type SavedKind } from './savedStore';
 import type { ModelText } from './modelText';
 import { createWordPopover } from './wordPopover';
 
@@ -155,6 +146,8 @@ export function mountWritingPanel(
   deskRoot: HTMLElement,
   onMasteryChanged: () => void,
   onOpenWords: () => void,
+  onOpenSaved: () => void,
+  onSavedChange: () => void,
 ): WritingPanel {
   let selected: string[] = [];
   let task: WritingTask | null = null;
@@ -180,10 +173,6 @@ export function mountWritingPanel(
   let closedNotes = new Set<number>();
   let notePending = new Set<number>();
   let noteError = new Map<number, string>();
-  let savedNote: string | null = null;
-  let savedListOpen = false;
-  let savedRowOpen: string | null = null;
-  let savedConfirm: string | null = null;
 
   const popover = createWordPopover({
     words: loadWords,
@@ -208,15 +197,13 @@ export function mountWritingPanel(
       </div>
       <p class="hint path-hint" id="path-hint"></p>
     </div>
-    <div id="work-slot"></div>
-    <div id="saved-slot"></div>`;
+    <div id="work-slot"></div>`;
 
   const pathsBox = deskRoot.querySelector<HTMLElement>('#paths')!;
   const indicator = pathsBox.querySelector<HTMLElement>('.m-tab-ind')!;
   const lengthBar = deskRoot.querySelector<HTMLElement>('#lengthbar')!;
   const pathHint = deskRoot.querySelector<HTMLElement>('#path-hint')!;
   const workSlot = deskRoot.querySelector<HTMLElement>('#work-slot')!;
-  const savedSlot = deskRoot.querySelector<HTMLElement>('#saved-slot')!;
   let placed = false;
 
   /** 滑块按目标卡片的实测像素走：百分比 translate 在 Chrome 里会卡住不动。 */
@@ -330,18 +317,19 @@ export function mountWritingPanel(
     }</p>`;
   }
 
-  /** 保存是结果区的收尾动作：一键存进本机习作集，存过就直说，不放一个按了没反应的按钮。 */
-  function saveRow(kind: SavedKind, text: string, hint: string): string {
+  /**
+   * 保存这篇放在结果卡头顶的工具条里：读完示范或拿到点评，眼睛先落在那一行，
+   * 按钮沉到卡片底部就等于没有。存过之后不再放按钮，只留状态和「去习作集」。
+   */
+  function saveControl(kind: SavedKind, text: string): string {
     if (!text.trim()) return '';
     if (hasSaved(kind, text)) {
-      return `<div class="row"><span class="hint">这篇已存进习作集，切到下面「习作集」就能翻出来。</span></div>`;
+      return `<span class="saved__tag" role="status">已存进习作集</span>
+        <button type="button" class="btn btn--sm btn--secondary" id="go-saved">去习作集</button>`;
     }
-    return `<div class="row">
-        <button type="button" class="btn btn--secondary btn--sm" id="save-${kind}" data-kind="${kind}" ${
-          busy ? 'disabled' : ''
-        }>保存这篇</button>
-        <span class="hint">${hint} 存在这台设备，换篇幅重写或刷新页面都不会没。</span>
-      </div>`;
+    return `<button type="button" class="btn btn--sm btn--secondary" id="save-${kind}" data-kind="${kind}" ${
+      busy ? 'disabled' : ''
+    }>保存这篇</button>`;
   }
 
   function lengthBlock(): string {
@@ -571,6 +559,7 @@ export function mountWritingPanel(
                 }</button>`
               : ''
           }
+          ${saveControl('model', model.text)}
           <span class="hint reader__tip">点任意单词看释义</span>
         </div>
         ${
@@ -588,7 +577,7 @@ export function mountWritingPanel(
           modelLength && !sameSpec(modelLength, spec)
             ? `<p class="hint">这篇按「${lengthLine(modelLength)}」写的，当前篇幅已改成「${lengthLine(
                 spec,
-              )}」——想存住现在这篇就先点「保存这篇」，再点 A 按新篇幅重写。</p>`
+              )}」——先点上面的「保存这篇」留住现在这段，再点 A 按新篇幅重写。</p>`
             : ''
         }
         ${engineLine(modelEngine)}
@@ -599,7 +588,6 @@ export function mountWritingPanel(
             : '这些词此前已在「练用中」或「会用」，状态不变。'
         }</p>
         <p class="hint">读示范只到「练用中」。点 B 自己写一段，用出且搭配地道，才会计入「会用」。</p>
-        ${saveRow('model', model.text, '整段英文连拼好的中文译文一起存。')}
       </div>`;
   }
 
@@ -612,6 +600,7 @@ export function mountWritingPanel(
           <span class="bar" role="img" aria-label="用词得分 ${clampScore(feedback.accuracy)} 分（满分 100）">
             <span class="fill" style="width:${clampScore(feedback.accuracy)}%"></span>
           </span>
+          ${saveControl('mine', feedback.submittedText)}
         </div>
         <p class="overall">${escapeHtml(feedback.overall)}</p>
         ${engineLine(feedbackEngine)}
@@ -630,7 +619,6 @@ export function mountWritingPanel(
             ? `掌握度回写：${changeLine(advanced)}`
             : '本篇没有词进入「会用」——目标词要用得地道才算数。'
         }</p>
-        ${saveRow('mine', feedback.submittedText, '你写的原文连得分与逐词判定一起存。')}
       </div>`
       : '';
     return `
@@ -704,83 +692,6 @@ export function mountWritingPanel(
       </section>`;
   }
 
-  function savedDay(iso: string): string {
-    const date = new Date(iso);
-    if (Number.isNaN(date.getTime())) return '';
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(
-      date.getMinutes(),
-    )}`;
-  }
-
-  function savedBody(item: SavedPassage): string {
-    const score =
-      item.accuracy === null
-        ? ''
-        : `<p class="overall">${escapeHtml(item.overall)}</p>
-           <p class="statsline"><span class="stats ok">用词得分 ${clampScore(item.accuracy)}/100</span></p>`;
-    const usage = item.usages.length
-      ? `<ul class="usage">${item.usages
-          .map((u) => {
-            const cls =
-              u.tag === '用出且地道' ? 'ok' : u.tag === '用出但生硬' ? 'warn' : 'miss';
-            return `<li class="${cls}"><span class="hw">${escapeHtml(u.headword)}</span><span class="tag">${escapeHtml(
-              u.tag,
-            )}</span><span class="note">${escapeHtml(u.note)}</span></li>`;
-          })
-          .join('')}</ul>`
-      : '';
-    return `
-      <p class="saved__text">${escapeHtml(item.text).replace(/\n/g, '<br>')}</p>
-      ${item.zh ? `<p class="passage__zh">${escapeHtml(item.zh)}</p>` : ''}
-      ${score}
-      ${usage}`;
-  }
-
-  /** 习作集：保存下来的示范与自写批改，默认只列一行标题，展开才给正文。 */
-  function savedBlock(): string {
-    const items = loadSaved();
-    if (!items.length) return '';
-    const rows = items
-      .map((item) => {
-        const open = savedRowOpen === item.id;
-        const confirming = savedConfirm === item.id;
-        return `
-          <li class="saved__item" id="saved-${item.id}">
-            <div class="saved__top">
-              <span class="badge">${item.kind === 'model' ? 'AI 示范' : '我的习作'}</span>
-              <span class="saved__title">${escapeHtml(item.title)}</span>
-              <span class="saved__meta">${escapeHtml(item.lengthLabel)} · ${savedDay(item.savedAt)}</span>
-              <button type="button" class="btn btn--sm btn--secondary" id="saved-open-${item.id}"
-                aria-expanded="${open}" aria-controls="saved-body-${item.id}">${open ? '收起' : '打开'}</button>
-              <button type="button" class="btn btn--sm btn--secondary" id="saved-copy-${item.id}">复制</button>
-              <button type="button" class="btn btn--sm btn--secondary" id="saved-del-${item.id}" ${
-                confirming ? 'data-confirm="1"' : ''
-              }>${confirming ? '确认删除' : '删除'}</button>
-            </div>
-            <div class="saved__body" id="saved-body-${item.id}" ${open ? '' : 'hidden'}>${
-              open ? savedBody(item) : ''
-            }</div>
-          </li>`;
-      })
-      .join('');
-    return `
-      <section class="card saved m-nolift" aria-labelledby="saved-h">
-        <div class="saved__head">
-          <h3 id="saved-h">习作集</h3>
-          <span class="badge">${items.length} 篇</span>
-          <button type="button" class="btn btn--sm btn--secondary" id="saved-list"
-            aria-expanded="${savedListOpen}" aria-controls="saved-list-box">${
-              savedListOpen ? '收起列表' : '展开列表'
-            }</button>
-          <span class="hint saved__note" role="status">${escapeHtml(
-            savedNote ?? '存在这台设备的浏览器里，换浏览器看不到。',
-          )}</span>
-        </div>
-        <ul class="saved__list" id="saved-list-box" ${savedListOpen ? '' : 'hidden'}>${rows}</ul>
-      </section>`;
-  }
-
   function pathHintLine(): string {
     if (busy === 'model') return 'AI 正在写示范，稍等一下。';
     if (!task) {
@@ -808,7 +719,6 @@ export function mountWritingPanel(
     });
     placeIndicator();
     workSlot.innerHTML = workCard(words, spec);
-    savedSlot.innerHTML = savedBlock();
 
     workSlot.querySelectorAll<HTMLElement>('.sent__en, .passage__text').forEach((scope) => {
       const first = scope.querySelector<HTMLButtonElement>('.tok');
@@ -939,83 +849,34 @@ export function mountWritingPanel(
         if (!task) return;
         const active = task;
         const kind = btn.dataset.kind as SavedKind;
-        const result =
-          kind === 'model' && model
-            ? addSaved({
-                kind,
-                title: active.title,
-                lengthLabel: lengthLine(modelLength ?? taskLength(active)),
-                text: model.text,
-                zh: joinedTranslation(explain?.sentences ?? []),
-                accuracy: null,
-                overall: '',
-                usages: [],
-              })
-            : kind === 'mine' && feedback
-              ? (() => {
-                  const judged = savedFeedback(feedback, loadWords());
-                  return addSaved({
-                    kind,
-                    title: active.title,
-                    lengthLabel: lengthLine(taskLength(active)),
-                    text: feedback.submittedText,
-                    zh: '',
-                    ...judged,
-                  });
-                })()
-              : { added: false, items: loadSaved() };
-        savedListOpen = true;
-        savedNote = result.added
-          ? `已存进习作集，共 ${result.items.length} 篇。`
-          : '这篇已经在习作集里了。';
-        if (result.added) savedRowOpen = result.items[0]?.id ?? null;
-        render();
-      });
-    });
-
-    savedSlot.querySelector<HTMLButtonElement>('#saved-list')?.addEventListener('click', () => {
-      savedListOpen = !savedListOpen;
-      render();
-    });
-
-    savedSlot.querySelectorAll<HTMLButtonElement>('[id^="saved-open-"]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const id = btn.id.slice('saved-open-'.length);
-        savedRowOpen = savedRowOpen === id ? null : id;
-        render();
-      });
-    });
-
-    savedSlot.querySelectorAll<HTMLButtonElement>('[id^="saved-copy-"]').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const item = loadSaved().find((saved) => saved.id === btn.id.slice('saved-copy-'.length));
-        if (!item) return;
-        try {
-          await navigator.clipboard.writeText(savedClip(item));
-          savedNote = '正文已复制到剪贴板。';
-        } catch {
-          savedNote = '复制没成功，展开这一行自己选中复制。';
+        if (kind === 'model' && model) {
+          addSaved({
+            kind,
+            title: active.title,
+            lengthLabel: lengthLine(modelLength ?? taskLength(active)),
+            text: model.text,
+            zh: joinedTranslation(explain?.sentences ?? []),
+            accuracy: null,
+            overall: '',
+            usages: [],
+          });
+        } else if (kind === 'mine' && feedback) {
+          addSaved({
+            kind,
+            title: active.title,
+            lengthLabel: lengthLine(taskLength(active)),
+            text: feedback.submittedText,
+            zh: '',
+            ...savedFeedback(feedback, loadWords()),
+          });
         }
+        onSavedChange();
+        // 重绘让按钮换成「已存进习作集」，用户不用猜刚才那下有没有生效。
         render();
       });
     });
 
-    savedSlot.querySelectorAll<HTMLButtonElement>('[id^="saved-del-"]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const id = btn.id.slice('saved-del-'.length);
-        // 删的是用户自己存下的东西：第一次只把按钮改成「确认删除」。
-        if (savedConfirm !== id) {
-          savedConfirm = id;
-          render();
-          return;
-        }
-        const items = removeSaved(id);
-        savedConfirm = null;
-        if (savedRowOpen === id) savedRowOpen = null;
-        savedNote = items.length ? `已删掉一篇，还剩 ${items.length} 篇。` : '习作集已空。';
-        render();
-      });
-    });
+    workSlot.querySelector<HTMLButtonElement>('#go-saved')?.addEventListener('click', onOpenSaved);
   }
 
   /** A 与 B 就是出题按钮：没有任务时按当前勾选与篇幅建任务，已有任务时切换两条路。 */
