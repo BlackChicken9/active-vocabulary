@@ -119,14 +119,33 @@ function feedbackPrompt(words: TargetWord[]): string {
   ].join('\n');
 }
 
-function modelTextPrompt(words: TargetWord[]): string {
+function modelTextPrompt(words: TargetWord[], length: PassageLength): string {
   return [
     '你是英语写作助教，为学习者写一段「示范答案」，把每个目标词自然用出来，并尽量带上它的常见搭配。',
-    '只输出 JSON：{"text":"1~3 句英文，连贯成一小段","wordIds":["实际用到的目标词 id"]}。',
-    '不要中文，不要解释，不要列出词表。',
+    `只输出 JSON：{"text":"${length.minSentences}~${length.maxSentences} 句英文（约 ${length.minWords}~${length.maxWords} 词），连贯成一段","wordIds":["实际用到的目标词 id"]}。`,
+    '句数与词数都要落在给定区间内；每个目标词至少出现一次；不要中文，不要解释，不要列出词表。',
     '目标词表：',
     describe(words),
   ].join('\n');
+}
+
+interface PassageLength {
+  minSentences: number;
+  maxSentences: number;
+  minWords: number;
+  maxWords: number;
+}
+
+/** 篇幅由前端选，但网关夹住上下限：模型不该被要求写 500 句，也不该收到 min>max 的区间。 */
+function parseLength(value: unknown, wordCount: number): PassageLength {
+  const record = (value ?? {}) as Record<string, unknown>;
+  const num = (input: unknown, fallback: number): number =>
+    typeof input === 'number' && Number.isFinite(input) ? Math.round(input) : fallback;
+  const minSentences = Math.min(12, Math.max(1, num(record.minSentences, Math.min(8, Math.max(2, wordCount)))));
+  const maxSentences = Math.min(12, Math.max(minSentences, num(record.maxSentences, minSentences + 2)));
+  const minWords = Math.min(400, Math.max(10, num(record.minWords, minSentences * 14)));
+  const maxWords = Math.min(400, Math.max(minWords, num(record.maxWords, maxSentences * 18)));
+  return { minSentences, maxSentences, minWords, maxWords };
 }
 
 function normalizeFeedback(data: unknown, words: TargetWord[], text: string, taskId: string) {
@@ -164,7 +183,8 @@ function normalizeFeedback(data: unknown, words: TargetWord[], text: string, tas
 
 function normalizeModelText(data: unknown, words: TargetWord[]) {
   const record = (data ?? {}) as Record<string, unknown>;
-  const text = asString(record.text, 1_200);
+  // 长档最多 12 句，1200 字会把正常长示范截断。
+  const text = asString(record.text, 2_600);
   if (!text) throw new Error('upstream_empty');
   const ids = Array.isArray(record.wordIds)
     ? record.wordIds.filter((id): id is string => typeof id === 'string')
@@ -266,8 +286,9 @@ export function createHandler(env: GatewayEnv = {}) {
     try {
       if (path === 'model-text') {
         const prompt = asString(body.prompt, 600) ?? '';
+        const length = parseLength(body.length, words.length);
         const modelText = normalizeModelText(
-          await chat(env, modelTextPrompt(words), `题干：${prompt}`),
+          await chat(env, modelTextPrompt(words, length), `题干：${prompt}`),
           words,
         );
         return json({ ok: true, modelText });

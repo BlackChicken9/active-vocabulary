@@ -45,13 +45,32 @@ globalThis.fetch = async (url, options) => {
         })),
       }
     : isModelText
-    ? {
-        // 假上游不会写文章，只把目标词头串起来，用来验证高亮与 wordIds 回填。
-        text: `Model passage: ${[...system.matchAll(/id=([\w-]+) \| ([^｜]+)｜/g)]
-          .map((m) => m[2])
-          .join(', ')}. Each target word appears here so the highlight can be checked.`,
-        wordIds: [...system.matchAll(/id=([\w-]+)/g)].map((m) => m[1]),
-      }
+    ? (() => {
+        // 假上游不会写文章：按网关给的篇幅区间拼句，用来验证长度约束与高亮。
+        const heads = [...system.matchAll(/id=([\w-]+) \| ([^｜]+)｜/g)].map((m) => m[2]);
+        const ids = [...system.matchAll(/id=([\w-]+)/g)].map((m) => m[1]);
+        const range = system.match(/(\d+)~(\d+) 句英文（约 (\d+)~(\d+) 词/);
+        const minS = range ? Number(range[1]) : 2;
+        const maxS = range ? Number(range[2]) : 4;
+        const frames = [
+          (h) => `I kept a small card for "${h}" and reread it twice before starting today's draft in class.`,
+          (h) => `Today my draft finally uses "${h}" in the exact place where it actually belongs.`,
+          (h) => `Using "${h}" inside a real sentence feels much easier now than it did last week.`,
+          (h) => `My study partner circled "${h}" and said the collocation now sounds completely natural to her.`,
+          (h) => `Once "${h}" appears naturally in the opening line, the whole paragraph holds together much better.`,
+          (h) => `I plan to reuse "${h}" in tomorrow's journal entry so that it stays active for longer.`,
+        ];
+        const sentences = heads.map((h, i) => frames[i % frames.length](h));
+        while (sentences.length < minS) {
+          sentences.push(frames[sentences.length % frames.length](heads[sentences.length % heads.length]));
+        }
+        while (sentences.length > maxS) {
+          const last = sentences.pop();
+          const prev = sentences.pop();
+          sentences.push(`${prev.replace(/[.!?]$/, '')}, and ${last.charAt(0).toLowerCase()}${last.slice(1)}`);
+        }
+        return { text: sentences.join(' '), wordIds: ids };
+      })()
     : {
         usages: [...system.matchAll(/id=([\w-]+) \| ([^｜]+)｜/g)].map((m, i) => ({
           wordId: m[1],

@@ -358,6 +358,100 @@ button:disabled {
   font-weight: 500;
 }
 
+.seg-btn strong,
+.seg-btn small {
+  display: block;
+}
+
+.seg-btn small {
+  margin-top: 0.15rem;
+  font-size: calc(0.72rem * var(--site-type, 1));
+  font-weight: 400;
+  color: var(--site-muted);
+}
+
+.seg-btn.on small {
+  color: color-mix(in srgb, var(--site-fg) 75%, var(--site-bg));
+}
+
+.mode-seg .seg-btn {
+  flex: 1;
+  min-width: 10rem;
+  text-align: left;
+}
+
+.length {
+  margin: 0.9rem 0 0.2rem;
+}
+
+.length-seg {
+  margin-bottom: 0.35rem;
+}
+
+.length-seg .seg-btn {
+  padding: 0.35rem 0.8rem;
+  text-align: center;
+}
+
+.paths {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+  margin-top: 0.9rem;
+}
+
+.path {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+  border: 1px solid var(--site-border);
+  border-radius: calc(var(--site-radius) - 4px);
+  background: var(--site-bg);
+  padding: 0.6rem 0.7rem;
+}
+
+.path .tag {
+  flex: none;
+  font-size: calc(0.7rem * var(--site-type, 1));
+  font-weight: 600;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--site-accent) 25%, var(--site-bg));
+  color: color-mix(in srgb, var(--site-accent) 70%, white);
+}
+
+.path strong {
+  display: block;
+  font-size: calc(0.9rem * var(--site-type, 1));
+}
+
+.path div > span {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: calc(0.76rem * var(--site-type, 1));
+  line-height: 1.45;
+  color: var(--site-muted);
+}
+
+.badges {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.statsline {
+  margin: 0 0 0.4rem;
+}
+
+.stats {
+  font-size: calc(0.78rem * var(--site-type, 1));
+}
+
+#count .stats {
+  white-space: nowrap;
+}
+
 .seg-btn:hover {
   background: var(--site-surface);
 }
@@ -417,6 +511,38 @@ button,
   margin-top: 0.4rem;
 }
 
+/* 滚动条也走站点自己的配色，不留浏览器默认灰。 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--site-border) var(--site-bg);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--site-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--site-border);
+  border-radius: 999px;
+  border: 2px solid var(--site-bg);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--site-accent) 55%, var(--site-border));
+}
+
+button:focus-visible,
+textarea:focus-visible,
+.chip:focus-visible {
+  outline: 2px solid var(--site-accent);
+  outline-offset: 2px;
+}
+
 @media (max-width: 720px) {
   body {
     display: block;
@@ -425,5 +551,13 @@ button,
 
   .layout {
     grid-template-columns: 1fr;
+  }
+
+  .paths {
+    grid-template-columns: 1fr;
+  }
+
+  #count .stats {
+    white-space: normal;
   }
 }

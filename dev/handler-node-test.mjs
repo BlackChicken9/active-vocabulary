@@ -159,4 +159,36 @@ assert.equal(JSON.parse(await bareFeedback.text()).feedback.usages[0].natural, t
 stubUpstream({ text: 'Phones are ubiquitous.', wordIds: ['bare'] });
 assert.equal((await configured(post('model-text', { words: noGloss, prompt: '写一句' }))).status, 200);
 
-console.log('functions/handler.ts 全部 12 组断言通过');
+// 13. model-text 篇幅：区间进 prompt，越界被夹住，缺省按词数估
+stubUpstream({ text: 'One. Two. Three.', wordIds: ['alleviate'] });
+await configured(post('model-text', {
+  words: WORDS,
+  prompt: 'x',
+  length: { minSentences: 7, maxSentences: 10, minWords: 100, maxWords: 180 },
+}));
+let systemPrompt = JSON.parse(upstreamCalls[0].options.body).messages[0].content;
+assert.match(systemPrompt, /7~10 句英文（约 100~180 词）/);
+stubUpstream({ text: 'x', wordIds: [] });
+await configured(post('model-text', {
+  words: WORDS,
+  prompt: 'x',
+  length: { minSentences: 99, maxSentences: 1, minWords: -5, maxWords: 9000 },
+}));
+systemPrompt = JSON.parse(upstreamCalls[0].options.body).messages[0].content;
+assert.match(systemPrompt, /12~12 句英文（约 10~400 词）/);
+stubUpstream({ text: 'x', wordIds: [] });
+await configured(post('model-text', { words: WORDS, prompt: 'x' }));
+systemPrompt = JSON.parse(upstreamCalls[0].options.body).messages[0].content;
+assert.match(systemPrompt, /2~4 句英文（约 28~72 词）/);
+
+// 14. 长示范不被旧的 1200 字上限截断
+const longText = 'A very long sentence about daily practice. '.repeat(60);
+stubUpstream({ text: longText, wordIds: ['alleviate'] });
+const longModel = JSON.parse(await (await configured(post('model-text', {
+  words: WORDS,
+  prompt: 'x',
+  length: { minSentences: 7, maxSentences: 10, minWords: 100, maxWords: 180 },
+}))).text());
+assert.equal(longModel.modelText.text, longText.trim());
+
+console.log('functions/handler.ts 全部 14 组断言通过');

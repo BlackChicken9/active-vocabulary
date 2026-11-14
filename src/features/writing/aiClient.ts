@@ -2,6 +2,7 @@ import type { Collocation, Feedback, Submission, Word, WordUsage, WritingTask } 
 import { ApiError, requestJson } from './api';
 import { generateMockFeedback } from './mockFeedback';
 import { generateModelText, type ModelText } from './modelText';
+import { taskLength } from './passageLength';
 
 export interface AiResult<T> {
   data: T;
@@ -113,7 +114,11 @@ export async function requestModelText(
   words: Word[],
 ): Promise<AiResult<ModelText>> {
   try {
-    const data = await post('model-text', { prompt: task.prompt, words: targets(task, words) });
+    const data = await post('model-text', {
+      prompt: task.prompt,
+      words: targets(task, words),
+      length: taskLength(task),
+    });
     return { data: readModelText(data), degraded: null };
   } catch (error) {
     return {

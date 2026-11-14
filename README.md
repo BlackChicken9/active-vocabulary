@@ -8,7 +8,7 @@
 
 收词入词本（认识）→ 勾选 2~5 个词生成限定写作任务 → 两条路：**读 AI 示范短文**（练用中）或**自己写 1~2 句**（AI 逐词判定是否用出、搭配是否地道）→ 掌握度进阶（会用）
 
-首屏词库是空的，不预设任何词：用户在写作面板点「粘贴你正在背的词」把自己正在背的笔记粘进来（`/intake` 整理成词卡，自动勾选前 5 个），空词库时另有「试试粘这段」用样例走一遍闭环。题干按这批词的主题生成，不是固定模板。
+首屏词库是空的，不预设任何词：用户在写作面板点「粘贴你正在背的词」把自己正在背的笔记粘进来（`/intake` 整理成词卡，自动勾选前 5 个），空词库时另有「试试粘这段」用样例走一遍闭环。题干按这批词的主题生成，不是固定模板；生成入口明示两条路（读 AI 示范短文 / 我自己写），篇幅四档可选（自动按词数 / 短 / 中 / 长），两条路共用同一篇幅。
 
 掌握度状态：`passive 认识` → `training 练用中` → `active 会用`，契约见 `src/types.ts`。只升不降：读示范最多到 `training`，亲手写出来且用对搭配才计入 `active`。
 
@@ -37,7 +37,7 @@
 | 路由 | 作用 | 入参 | 出参 |
 | --- | --- | --- | --- |
 | `feedback` | 逐词判定是否用出、是否地道 | `{ taskId, text, words[] }` | `{ ok, feedback }` |
-| `model-text` | 按题干生成示范短文 | `{ prompt, words[] }` | `{ ok, modelText }` |
+| `model-text` | 按题干与篇幅生成示范短文 | `{ prompt, words[], length }` | `{ ok, modelText }` |
 | `intake` | 把用户随手粘贴的任意文本整理成词卡 | `{ raw }`（≤6000 字） | `{ ok, words[] }`（≤30 条） |
 
 `intake` 是收词的正门：不规定粘贴格式，一串单词、一段带释义的笔记都能进。返回的每条是 `{ headword, pos, meaningZh, theme, examples[≤2], collocations[≤4]{phrase,gloss} }`，字段缺了就是空串/空数组，词头已去重，最多 30 条。`theme` 是模型对这批词共同话题的判断（如「海洋与环境」），A 侧把它存成词卡的 `source: 粘贴导入 · ${theme}`，出题时按「·」后的主题生成题干，所以用户自己粘的词也能「按词出题」。网关不可用（`service_not_configured` / `upstream_unavailable`）时退化为按换行与逗号切分、只填 `headword`，并在界面上写明这次没走 AI，不假装解析成功。
@@ -45,6 +45,8 @@
 词头有校验（`HEADWORD_OK`：英文开头、≤40 字符，模型把整行笔记/例句/中文释义当词头时直接丢掉），所以入库的 `headword` 一定是词而不是句子。B 侧要注意：`feedback` / `model-text` 的 `words[]` 里 `meaningZh` **允许为空串**——刚粘贴导入的词可能还没有释义，缺释义不该让整次点评失败（`id` 与 `headword` 仍是必填）。
 
 上游走 DeepSeek 的 OpenAI 兼容接口（`https://api.deepseek.com/v1`），环境变量：`API_KEY`（必填 Secret，填 DeepSeek 的 key）、`AI_MODEL`（默认 `deepseek-chat`）、`AI_BASE_URL`（可选，换服务商时用）。缺 key 时返回 `service_not_configured`，前端自动回落本地 mock 并在结果里写明兜底原因，不会假装调用了 AI。
+
+篇幅契约：`length = { minSentences, maxSentences, minWords, maxWords }`，示范短文与自写共用同一区间。前端四档：自动（句数 = 目标词数，夹在 2~8，再 +2 句上限；词数按每句 14~18 估）、短 2~3 句、中 4~6 句、长 7~10 句，见 `src/features/writing/passageLength.ts`。网关把句数夹在 1~12、词数夹在 10~400，并保证 min ≤ max；`model-text` 的 system prompt 会带上区间，返回文本上限 2600 字。任务对象存 `length`（旧 localStorage 任务缺字段时按自动档兜底），题干里的篇幅行与面板上的实时句数/词数判定（偏短/达标/偏长）都读它。
 
 ```bash
 node dev/handler-node-test.mjs   # 网关逻辑断言（本机无 Deno 也能跑）
