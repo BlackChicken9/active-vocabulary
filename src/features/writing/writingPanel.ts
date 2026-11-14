@@ -141,7 +141,7 @@ export function mountWritingPanel(
   bankRoot: HTMLElement,
   deskRoot: HTMLElement,
   onMasteryChanged: () => void,
-): void {
+): { redraw: () => void } {
   let selected: string[] = [];
   let task: WritingTask | null = null;
   let mode: Mode = 'self';
@@ -975,4 +975,5 @@ export function mountWritingPanel(
   }
 
   render();
+  return { redraw: render };
 }

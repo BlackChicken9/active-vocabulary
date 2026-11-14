@@ -34,3 +34,15 @@ export function setMastery(id: string, mastery: MasteryStatus): Word[] {
   saveWords(words);
   return words;
 }
+
+/** 词卡页补搭配和例句用的局部改写，不动词头和掌握度。 */
+export function editWord(
+  id: string,
+  patch: Partial<Pick<Word, 'examples' | 'collocations'>>,
+): Word[] {
+  const words = loadWords().map((w) =>
+    w.id === id ? { ...w, ...patch, updatedAt: new Date().toISOString() } : w,
+  );
+  saveWords(words);
+  return words;
+}
