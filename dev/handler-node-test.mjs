@@ -21,16 +21,19 @@ function stubUpstream(payload, init = {}) {
       });
     }
     return new Response(
-      JSON.stringify({ choices: [{ message: { content: typeof payload === 'string' ? payload : JSON.stringify(payload) } }] }),
+      JSON.stringify({
+        ...(init.model ? { model: init.model } : {}),
+        choices: [{ message: { content: typeof payload === 'string' ? payload : JSON.stringify(payload) } }],
+      }),
       { status: 200, headers: { 'content-type': 'application/json' } },
     );
   };
 }
 
-function post(path, body) {
+function post(path, body, headers = {}) {
   return new Request(`https://site.example/functions/v1/app/${path}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...headers },
     body: typeof body === 'string' ? body : JSON.stringify(body),
   });
 }
@@ -235,7 +238,7 @@ assert.deepEqual(explained.explanation.glossary.map((g) => g.term), [
 let explainBody = JSON.parse(upstreamCalls[0].options.body);
 assert.match(explainBody.messages[1].content, /^1\. Running helps me alleviate stress\.\n2\. You can leverage/);
 assert.match(explainBody.messages[0].content, /必须正好 2 项/);
-assert.equal(explainBody.max_tokens, 6000);
+assert.equal(explainBody.max_tokens, 4000);
 
 // 16. explain：模型少回一句也不崩，缺的那句留空；全空则收敛为 502
 stubUpstream({ sentences: [{ zh: '只回了第一句' }], glossary: [] });
@@ -284,4 +287,71 @@ stubUpstream({
 const cappedGloss = JSON.parse(await (await configured(post('explain', { text: 'One. Two.' }))).text());
 assert.equal(cappedGloss.explanation.glossary.length, 120);
 
-console.log('functions/handler.ts 全部 19 组断言通过');
+// 20. 访客自带密钥：优先于站点密钥、缺站点密钥也能用、脏值与上游拒绝单独报错、绝不回显
+const BYO = 'sk-user-own-key-0001';
+const byoOnly = createHandler({});
+stubUpstream({ text: 'Phones are ubiquitous.', wordIds: ['bare'] });
+const byoModel = await byoOnly(post('model-text', { words: WORDS, prompt: 'x' }, { 'x-model-key': BYO }));
+assert.equal(byoModel.status, 200);
+assert.match(upstreamCalls[0].options.headers.authorization, new RegExp(`^Bearer ${BYO}$`));
+assert.equal((await byoModel.text()).includes(BYO), false);
+// 站点密钥和自带密钥同时存在时，用的是自带的那个。
+stubUpstream({ text: 'Phones are ubiquitous.', wordIds: ['bare'] });
+await configured(post('model-text', { words: WORDS, prompt: 'x' }, { 'x-model-key': BYO }));
+assert.match(upstreamCalls[0].options.headers.authorization, new RegExp(`^Bearer ${BYO}$`));
+// 形状不对的自带密钥在本地就拒掉，一次上游都不打。
+stubUpstream({});
+for (const bad of ['ab', 'sk-bad key', 'k'.repeat(300)]) {
+  const rejected = await configured(post('model-text', { words: WORDS, prompt: 'x' }, { 'x-model-key': bad }));
+  assert.equal(rejected.status, 400);
+  assert.deepEqual(JSON.parse(await rejected.text()), { ok: false, error: 'model_key_invalid' });
+}
+assert.equal(upstreamCalls.length, 0);
+// 上游拒绝自带密钥 → model_key_rejected，且不回落到站点密钥再打一次。
+stubUpstream({}, { status: 401 });
+const keyRejected = await configured(post('model-text', { words: WORDS, prompt: 'x' }, { 'x-model-key': BYO }));
+assert.equal(keyRejected.status, 400);
+assert.deepEqual(JSON.parse(await keyRejected.text()), { ok: false, error: 'model_key_rejected' });
+assert.equal(upstreamCalls.length, 1);
+// 用的是站点密钥时，上游 401 仍然只是网关故障，不泄漏任何 key。
+stubUpstream({}, { status: 401 });
+const siteKeyRejected = await configured(post('model-text', { words: WORDS, prompt: 'x' }));
+assert.equal(siteKeyRejected.status, 502);
+assert.deepEqual(JSON.parse(await siteKeyRejected.text()), { ok: false, error: 'upstream_unavailable' });
+
+// 21. 型号回显：界面要能说明这次实际调的是哪个模型，而不是笼统一句「走了 AI 网关」。
+stubUpstream({ text: 'Phones are ubiquitous.', wordIds: ['alleviate'] });
+const defaultModel = JSON.parse(
+  await (await configured(post('model-text', { words: WORDS, prompt: 'x' }))).text(),
+);
+assert.equal(defaultModel.model, 'deepseek-chat');
+
+// AI_MODEL 换了服务商，回显跟着配置走。
+const switched = createHandler({ LLM_API_KEY: 'sk-test', AI_MODEL: 'qwen3-max' });
+const switchedModel = JSON.parse(
+  await (await switched(post('model-text', { words: WORDS, prompt: 'x' }))).text(),
+);
+assert.equal(switchedModel.model, 'qwen3-max');
+
+// 上游自己报了具体版本时以它为准，界面不猜。
+stubUpstream({ text: 'Phones are ubiquitous.', wordIds: ['alleviate'] }, { model: 'deepseek-chat-v3' });
+const echoedModel = JSON.parse(
+  await (await configured(post('model-text', { words: WORDS, prompt: 'x' }))).text(),
+);
+assert.equal(echoedModel.model, 'deepseek-chat-v3');
+
+// 五路都带 model，前端每一屏都能标明这次用的型号。
+for (const [path, body, payload] of [
+  ['feedback', { words: WORDS, text: 'I alleviate stress.', taskId: 't1' }, { usages: [{ wordId: 'alleviate', used: true, natural: true, note: '搭配自然' }], accuracy: 100, overall: '不错' }],
+  ['intake', { raw: 'alleviate, leverage' }, { words: [{ headword: 'alleviate' }] }],
+  ['gloss', { term: 'alleviate', sentence: 'I alleviate stress.' }, { term: 'alleviate', pos: 'v.', meaningZh: '减轻' }],
+  ['explain', { text: 'I alleviate stress.' }, { sentences: [{ zh: '我缓解了压力。', structure: '主谓宾', marked: '[主语 I][谓语 alleviate][宾语 stress]' }], glossary: ['alleviate|v.|减轻'] }],
+  ['model-text', { words: WORDS, prompt: 'x' }, { text: 'I alleviate stress. Phones are ubiquitous.', wordIds: ['alleviate'] }],
+]) {
+  stubUpstream(payload);
+  const routed = await configured(post(path, body));
+  assert.equal(routed.status, 200);
+  assert.equal(JSON.parse(await routed.text()).model, 'deepseek-chat');
+}
+
+console.log('functions/handler.ts 全部 21 组断言通过');

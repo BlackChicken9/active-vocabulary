@@ -19,6 +19,9 @@ const MAX_RAW = 6_000;
 const MAX_CARDS = 30;
 const MAX_GLOSS = 120;
 const MAX_EXPLAIN_SENTENCES = 12;
+/** 访客自带密钥：走请求头，不进 URL、不进日志，也只在这一次请求里活着。 */
+const MODEL_KEY_HEADER = 'x-model-key';
+const MODEL_KEY_OK = /^[A-Za-z0-9_\-.]{8,200}$/;
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -109,7 +112,8 @@ async function chat(
   prompt: string,
   user: string,
   options: { maxTokens?: number; timeoutMs?: number } = {},
-): Promise<unknown> {
+): Promise<{ data: unknown; model: string }> {
+  const model = env.AI_MODEL || DEFAULT_MODEL;
   const response = await fetch(`${env.AI_BASE_URL ?? DEFAULT_BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -119,9 +123,9 @@ async function chat(
       'user-agent': 'active-vocab-sites/1.0 (Windows)',
     },
     body: JSON.stringify({
-      model: env.AI_MODEL || DEFAULT_MODEL,
+      model,
       temperature: 0.2,
-      // 默认 4096 会把逐句讲解的 JSON 截断在半句上，讲解这一路显式抬高。
+      // 单次生成默认最多 4096 token，讲解那一路另给更低的封顶。
       max_tokens: options.maxTokens ?? 4096,
       response_format: { type: 'json_object' },
       messages: [
@@ -132,10 +136,17 @@ async function chat(
     signal: AbortSignal.timeout(options.timeoutMs ?? 20_000),
   });
   if (!response.ok) throw new Error(`upstream_${response.status}`);
-  const payload = (await response.json()) as { choices?: { message?: { content?: string } }[] };
+  const payload = (await response.json()) as {
+    model?: string;
+    choices?: { message?: { content?: string } }[];
+  };
   const content = payload.choices?.[0]?.message?.content;
   if (typeof content !== 'string') throw new Error('upstream_empty');
-  return JSON.parse(content.replace(/^\s*```(?:json)?\s*|\s*```\s*$/g, ''));
+  return {
+    // 上游自己报了型号就用它（换服务商时可能被改名），否则用我们请求的那个。
+    model: typeof payload.model === 'string' && payload.model.trim() ? payload.model.trim() : model,
+    data: JSON.parse(content.replace(/^\s*```(?:json)?\s*|\s*```\s*$/g, '')),
+  };
 }
 
 function describe(words: TargetWord[]): string {
@@ -394,14 +405,31 @@ function normalizeIntake(data: unknown) {
   return { words };
 }
 
+/** 上游细节（状态码、异常文本、密钥）一律不外泄，前端只看到稳定错误码。 */
+function upstreamFailure(error: unknown, fromUserKey: boolean): Response {
+  const code = error instanceof Error ? error.message : '';
+  // 401/403 只在访客自带 key 时单独报出来：那是他自己的密钥问题，不是网关故障。
+  if (fromUserKey && (code === 'upstream_401' || code === 'upstream_403')) {
+    return json({ ok: false, error: 'model_key_rejected' }, 400);
+  }
+  return json({ ok: false, error: 'upstream_unavailable' }, 502);
+}
+
 export function createHandler(env: GatewayEnv = {}) {
   return async function handler(request: Request): Promise<Response> {
     const path = route(new URL(request.url).pathname);
     if (!path) return json({ ok: false, error: 'not_found' }, 404);
     if (request.method !== 'POST') return json({ ok: false, error: 'method_not_allowed' }, 405);
-    if (!env.LLM_API_KEY?.trim()) {
-      return json({ ok: false, error: 'service_not_configured' }, 503);
+
+    // 自带 key 优先；带了就只用它，失败也不回落到站点 key——那会悄悄花掉站主的额度。
+    const provided = (request.headers.get(MODEL_KEY_HEADER) ?? '').trim().slice(0, 256);
+    const fromUserKey = provided.length > 0;
+    if (fromUserKey && !MODEL_KEY_OK.test(provided)) {
+      return json({ ok: false, error: 'model_key_invalid' }, 400);
     }
+    const apiKey = fromUserKey ? provided : env.LLM_API_KEY?.trim() ?? '';
+    if (!apiKey) return json({ ok: false, error: 'service_not_configured' }, 503);
+    const cfg: GatewayEnv = { ...env, LLM_API_KEY: apiKey };
 
     const body = await readBody(request);
     if (!body) return json({ ok: false, error: 'invalid_request' }, 400);
@@ -410,9 +438,10 @@ export function createHandler(env: GatewayEnv = {}) {
       const raw = asString(body.raw, MAX_RAW);
       if (!raw) return json({ ok: false, error: 'invalid_request' }, 400);
       try {
-        return json({ ok: true, ...normalizeIntake(await chat(env, intakePrompt(), raw)) });
-      } catch {
-        return json({ ok: false, error: 'upstream_unavailable' }, 502);
+        const { data, model } = await chat(cfg, intakePrompt(), raw);
+        return json({ ok: true, model, ...normalizeIntake(data) });
+      } catch (error) {
+        return upstreamFailure(error, fromUserKey);
       }
     }
 
@@ -421,13 +450,12 @@ export function createHandler(env: GatewayEnv = {}) {
       if (!term || !GLOSS_TERM_OK.test(term)) return json({ ok: false, error: 'invalid_request' }, 400);
       const sentence = asString(body.sentence, 600) ?? '';
       try {
-        const entry = normalizeGloss(
-          await chat(env, glossPrompt(), `词：${term}\n所在句子：${sentence}`, { maxTokens: 512 }),
-          term,
-        );
-        return json({ ok: true, entry });
-      } catch {
-        return json({ ok: false, error: 'upstream_unavailable' }, 502);
+        const { data, model } = await chat(cfg, glossPrompt(), `词：${term}\n所在句子：${sentence}`, {
+          maxTokens: 512,
+        });
+        return json({ ok: true, model, entry: normalizeGloss(data, term) });
+      } catch (error) {
+        return upstreamFailure(error, fromUserKey);
       }
     }
 
@@ -440,16 +468,15 @@ export function createHandler(env: GatewayEnv = {}) {
       const words = parseWords(body.words) ?? [];
       const numbered = sentences.map((sentence, index) => `${index + 1}. ${sentence}`).join('\n');
       try {
-        const explanation = normalizeExplanation(
-          await chat(env, explainPrompt(words, sentences.length), numbered, {
-            maxTokens: 6_000,
-            timeoutMs: 45_000,
-          }),
-          sentences,
-        );
-        return json({ ok: true, explanation });
-      } catch {
-        return json({ ok: false, error: 'upstream_unavailable' }, 502);
+        // 讲解最多 12 句，按每句译文+结构+成分估 4000 token 够写完 JSON；
+        // 真被截断就整路退成本地兜底，不会拿半截译文糊弄学习者。
+        const { data, model } = await chat(cfg, explainPrompt(words, sentences.length), numbered, {
+          maxTokens: 4_000,
+          timeoutMs: 45_000,
+        });
+        return json({ ok: true, model, explanation: normalizeExplanation(data, sentences) });
+      } catch (error) {
+        return upstreamFailure(error, fromUserKey);
       }
     }
 
@@ -460,25 +487,16 @@ export function createHandler(env: GatewayEnv = {}) {
       if (path === 'model-text') {
         const prompt = asString(body.prompt, 600) ?? '';
         const length = parseLength(body.length, words.length);
-        const modelText = normalizeModelText(
-          await chat(env, modelTextPrompt(words, length), `题干：${prompt}`),
-          words,
-        );
-        return json({ ok: true, modelText });
+        const { data, model } = await chat(cfg, modelTextPrompt(words, length), `题干：${prompt}`);
+        return json({ ok: true, model, modelText: normalizeModelText(data, words) });
       }
 
       const text = asString(body.text, MAX_TEXT) ?? '';
       const taskId = asString(body.taskId, 64) ?? '';
-      const feedback = normalizeFeedback(
-        await chat(env, feedbackPrompt(words), `学习者写的句子：\n${text}`),
-        words,
-        text,
-        taskId,
-      );
-      return json({ ok: true, feedback });
-    } catch {
-      // 上游细节（状态码、异常文本、密钥）一律不外泄，前端只看到稳定错误码。
-      return json({ ok: false, error: 'upstream_unavailable' }, 502);
+      const { data, model } = await chat(cfg, feedbackPrompt(words), `学习者写的句子：\n${text}`);
+      return json({ ok: true, model, feedback: normalizeFeedback(data, words, text, taskId) });
+    } catch (error) {
+      return upstreamFailure(error, fromUserKey);
     }
   };
 }

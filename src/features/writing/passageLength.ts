@@ -35,6 +35,15 @@ export function lengthLine(spec: PassageLength): string {
   return `${spec.minSentences}~${spec.maxSentences} 句 · 约 ${spec.minWords}~${spec.maxWords} 词`;
 }
 
+export function sameSpec(a: PassageLength, b: PassageLength): boolean {
+  return (
+    a.minSentences === b.minSentences &&
+    a.maxSentences === b.maxSentences &&
+    a.minWords === b.minWords &&
+    a.maxWords === b.maxWords
+  );
+}
+
 export function countSentences(text: string): number {
   return splitSentences(text).length;
 }

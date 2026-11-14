@@ -1,6 +1,7 @@
 import './style.css';
 import type { MasteryStatus } from './types';
 import { loadWords } from './features/words/wordStore';
+import { clearModelKey, keyTail, loadModelKey, saveModelKey } from './modelKey';
 import { mountWordsPanel, type WordsPanel } from './features/words/wordsPanel';
 import { mountWritingPanel } from './features/writing/writingPanel';
 
@@ -29,10 +30,10 @@ app.innerHTML = `
   <nav class="viewnav" aria-label="视图切换">
     <div class="viewnav__in seg" role="group" aria-label="写作与词本">
       <button type="button" class="seg-btn" data-view="write" aria-pressed="true">
-        <strong>写作</strong><small>读示范 · 自己写</small>
+        <strong>写作</strong><small>按词出题 · 逐句点评</small>
       </button>
       <button type="button" class="seg-btn" data-view="words" aria-pressed="false">
-        <strong>词本</strong><small>学搭配 · 补例句</small>
+        <strong>词本</strong><small>粘笔记收词 · 学搭配</small>
       </button>
     </div>
   </nav>
@@ -45,8 +46,16 @@ app.innerHTML = `
   </main>
   <footer class="foot">
     <div class="foot__in">
-      <span>词库与草稿只存在这台设备的浏览器里。</span>
-      <span>示范与点评走站点 Function，用你自己的模型密钥。</span>
+      <span>词库与任务只存在这台设备的浏览器里。</span>
+      <div class="keyrow">
+        <span class="keyrow__state" id="key-state" role="status"></span>
+        <label class="sr-only" for="model-key">模型密钥</label>
+        <input class="wb-input keyrow__input" id="model-key" type="password" autocomplete="off"
+               spellcheck="false" placeholder="粘贴你自己的模型密钥"
+               title="只存在这台设备的浏览器里，随请求交给本站网关；共享电脑上别用">
+        <button type="button" class="btn btn--sm btn--secondary" id="key-save">保存</button>
+        <button type="button" class="btn btn--sm btn--secondary" id="key-clear" hidden>清除</button>
+      </div>
     </div>
   </footer>`;
 
@@ -81,6 +90,47 @@ function renderTally(): void {
 
 renderTally();
 
+/**
+ * 模型密钥：粘了自己的 key 就走自己的额度，没粘就用站点 Secret。
+ * 值只进 localStorage 和请求头，输入框 type=password、保存即清空，界面只留尾号。
+ */
+function mountKeyRow(): void {
+  const input = document.querySelector<HTMLInputElement>('#model-key')!;
+  const state = document.querySelector<HTMLElement>('#key-state')!;
+  const saveBtn = document.querySelector<HTMLButtonElement>('#key-save')!;
+  const clearBtn = document.querySelector<HTMLButtonElement>('#key-clear')!;
+
+  function show(message?: string, warn = false): void {
+    const key = loadModelKey();
+    state.textContent = message ?? (key ? `当前用你的密钥（尾号 ${keyTail(key)}）` : '当前用站点密钥');
+    state.classList.toggle('warn', warn);
+    clearBtn.hidden = !key;
+  }
+
+  function save(): void {
+    if (saveModelKey(input.value)) {
+      input.value = '';
+      show();
+      return;
+    }
+    show(input.value.trim() ? '密钥格式不对，检查有没有多复制空格' : '先粘贴密钥再保存', true);
+  }
+
+  saveBtn.addEventListener('click', save);
+  input.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    save();
+  });
+  clearBtn.addEventListener('click', () => {
+    clearModelKey();
+    show('已改用站点密钥');
+  });
+  show();
+}
+
+mountKeyRow();
+
 type View = 'write' | 'words';
 
 const skip = document.querySelector<HTMLAnchorElement>('#skip')!;
@@ -95,13 +145,33 @@ const writing = mountWritingPanel(
   document.querySelector<HTMLElement>('#bank')!,
   document.querySelector<HTMLElement>('#desk')!,
   renderTally,
+  () => go('words'),
 );
 let words: WordsPanel | null = null;
 
-/** 进哪个视图就重算哪个视图：词本里补的搭配、写作页里粘的新词，切过去都是最新的。 */
+/** 页内锚点用 #desk / #words-panel，视图 hash 必须带 / 前缀才不撞车。 */
+const HASH: Record<View, string> = { write: '#/write', words: '#/words' };
+let current: View = 'write';
+
+/** 认不出来的 hash 是页内锚点（#desk / #words-panel），不是路由：交给调用方留在当前屏。 */
+function viewFromHash(): View | null {
+  for (const view of Object.keys(HASH) as View[]) {
+    if (location.hash === HASH[view]) return view;
+  }
+  return null;
+}
+
+/** 进哪个视图就重算哪个视图：词本里补的搭配、写作页里勾的目标词，切过去都是最新的。 */
 function showView(view: View): void {
+  current = view;
   if (view === 'words') {
-    words = words ?? mountWordsPanel(wordsRoot, renderTally);
+    words =
+      words ??
+      mountWordsPanel(wordsRoot, {
+        onChanged: renderTally,
+        onGoWrite: () => go('write'),
+        onWordsAdded: (ids) => writing.selectWords(ids),
+      });
     words.redraw();
   } else {
     writing.redraw();
@@ -115,6 +185,16 @@ function showView(view: View): void {
   skip.textContent = view === 'write' ? '跳到写作区' : '跳到词本';
 }
 
-for (const button of viewButtons) {
-  button.addEventListener('click', () => showView(button.dataset.view as View));
+/** 换屏的唯一入口：改 hash，剩下的交给 hashchange，浏览器后退键因此能退回上一屏。 */
+function go(view: View): void {
+  if (location.hash === HASH[view]) showView(view);
+  else location.hash = HASH[view];
 }
+
+for (const button of viewButtons) {
+  button.addEventListener('click', () => go(button.dataset.view as View));
+}
+
+window.addEventListener('hashchange', () => showView(viewFromHash() ?? current));
+
+showView(viewFromHash() ?? 'write');

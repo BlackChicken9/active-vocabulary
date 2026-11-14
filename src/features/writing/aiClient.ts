@@ -11,6 +11,7 @@ import type {
   WritingTask,
 } from '../../types';
 import { ApiError, requestJson } from './api';
+import { loadModelKey } from '../../modelKey';
 import { generateMockFeedback } from './mockFeedback';
 import { generateExplanation, generateModelText, type ModelText } from './modelText';
 import { splitSentences } from './passage';
@@ -20,10 +21,14 @@ export interface AiResult<T> {
   data: T;
   /** 非 null 表示这次没走真实 LLM，前端要如实标出来。 */
   degraded: string | null;
+  /** 网关带回的实际型号；没走成 AI 时为 null。 */
+  model: string | null;
 }
 
 const FALLBACK_MESSAGES: Record<string, string> = {
   service_not_configured: 'AI 网关未配置密钥',
+  model_key_invalid: '你的模型密钥格式不对（页脚可改）',
+  model_key_rejected: '你的模型密钥被上游拒绝（页脚可换）',
   upstream_unavailable: 'AI 网关调用上游失败',
   invalid_request: 'AI 网关拒绝了请求参数',
   access_denied: '没有访问 AI 网关的权限',
@@ -39,6 +44,12 @@ function reason(error: unknown): string {
   return 'AI 网关响应不符合契约';
 }
 
+/** 网关会把这次实际用的型号带回来；没带就当作未知，界面宁可不显示也不猜。 */
+function modelOf(value: unknown): string | null {
+  const raw = (value as Record<string, unknown>)?.model;
+  return typeof raw === 'string' && raw.trim() ? raw.trim().slice(0, 64) : null;
+}
+
 function targets(task: WritingTask, words: Word[]) {
   return words
     .filter((word) => task.targetWordIds.includes(word.id))
@@ -50,16 +61,38 @@ function targets(task: WritingTask, words: Word[]) {
     }));
 }
 
-async function post(path: string, payload: unknown): Promise<unknown> {
-  return requestJson(
-    `/functions/v1/app/${path}`,
-    {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(payload),
-    },
-    FALLBACK_MESSAGES,
+/**
+ * 生成类请求一次只跑一路：两屏各持自己的忙标记，互相不知道对方在不在调用，
+ * 排队比让它们同时打到上游稳——后来的请求等前面那条落地，界面照常转圈。
+ */
+let lane: Promise<unknown> = Promise.resolve();
+
+function queue<T>(call: () => Promise<T>): Promise<T> {
+  const run = lane.then(call, call);
+  lane = run.then(
+    () => undefined,
+    () => undefined,
   );
+  return run;
+}
+
+async function post(path: string, payload: unknown): Promise<unknown> {
+  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  // 自带密钥走请求头：不进 URL、不进日志，网关用完这一次就丢。
+  const userKey = loadModelKey();
+  if (userKey) headers['x-model-key'] = userKey;
+  const call = () =>
+    requestJson(
+      `/functions/v1/app/${path}`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      },
+      FALLBACK_MESSAGES,
+    );
+  // 点词查释义短而即时，别排在生成类请求后面；其余长请求一次只跑一路。
+  return path === 'gloss' ? call() : queue(call);
 }
 
 function readFeedback(value: unknown, task: WritingTask, submission: Submission): Feedback {
@@ -112,11 +145,12 @@ export async function requestFeedback(
       text: submission.text,
       words: targets(task, words),
     });
-    return { data: readFeedback(data, task, submission), degraded: null };
+    return { data: readFeedback(data, task, submission), degraded: null, model: modelOf(data) };
   } catch (error) {
     return {
       data: generateMockFeedback(task, submission, words),
       degraded: `${reason(error)}，已用本地 mock 点评`,
+      model: null,
     };
   }
 }
@@ -131,11 +165,12 @@ export async function requestModelText(
       words: targets(task, words),
       length: taskLength(task),
     });
-    return { data: readModelText(data), degraded: null };
+    return { data: readModelText(data), degraded: null, model: modelOf(data) };
   } catch (error) {
     return {
       data: generateModelText(task, words),
       degraded: `${reason(error)}，示范短文改由词本例句拼接`,
+      model: null,
     };
   }
 }
@@ -196,11 +231,12 @@ export async function requestExplain(
 ): Promise<AiResult<Explanation>> {
   try {
     const data = await post('explain', { text: source, words: targets(task, words) });
-    return { data: readExplanation(data, source), degraded: null };
+    return { data: readExplanation(data, source), degraded: null, model: modelOf(data) };
   } catch (error) {
     return {
       data: generateExplanation(source),
       degraded: `${reason(error)}，译文与结构暂缺`,
+      model: null,
     };
   }
 }
@@ -214,9 +250,10 @@ export async function requestGloss(term: string, sentence: string): Promise<AiRe
     return {
       data: { term: text(entry?.term, 48) || term, pos: text(entry?.pos, 16), meaningZh },
       degraded: null,
+      model: modelOf(data),
     };
   } catch (error) {
-    return { data: { term, pos: '', meaningZh: '' }, degraded: reason(error) };
+    return { data: { term, pos: '', meaningZh: '' }, degraded: reason(error), model: null };
   }
 }
 
@@ -310,11 +347,12 @@ export async function requestIntake(raw: string): Promise<AiResult<IntakeCard[]>
     const data = await post('intake', { raw });
     const cards = readIntakeCards(data);
     if (!cards.length) throw new Error('invalid_intake');
-    return { data: cards, degraded: null };
+    return { data: cards, degraded: null, model: modelOf(data) };
   } catch (error) {
     return {
       data: splitLocally(raw),
       degraded: `${reason(error)}，已本地切出词头，释义与例句留空`,
+      model: null,
     };
   }
 }

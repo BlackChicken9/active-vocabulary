@@ -1,6 +1,6 @@
 import type { Word } from '../../types';
-import { loadWords, saveWords } from '../words/wordStore';
-import { requestIntake, type IntakeCard } from './aiClient';
+import { loadWords, saveWords } from './wordStore';
+import { requestIntake, type IntakeCard } from '../writing/aiClient';
 
 export interface IntakeOutcome {
   added: Word[];

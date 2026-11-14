@@ -2,8 +2,6 @@ import type { Explanation, Feedback, LengthChoice, MasteryStatus, PassageLength,
 import { escapeHtml } from '../../escapeHtml';
 import { loadWords } from '../words/wordStore';
 import { requestExplain, requestFeedback, requestModelText } from './aiClient';
-import { importWords } from './intake';
-import { INTAKE_SAMPLE } from './intakeSample';
 import { advanceMastery, markTraining, type MasteryChange } from './masteryUpdate';
 import { lemmaCandidates, roleClass, segmentSentence, splitSentences, tokenize } from './passage';
 import {
@@ -13,9 +11,20 @@ import {
   lengthLine,
   lengthState,
   passageSpec,
+  sameSpec,
   taskLength,
 } from './passageLength';
 import { applyLength, createTask, MAX_TARGET_WORDS, MIN_TARGET_WORDS, setStatus } from './taskStore';
+import {
+  addSaved,
+  hasSaved,
+  loadSaved,
+  removeSaved,
+  savedClip,
+  savedFeedback,
+  type SavedKind,
+  type SavedPassage,
+} from './savedStore';
 import type { ModelText } from './modelText';
 import { createWordPopover } from './wordPopover';
 
@@ -35,8 +44,6 @@ type Mode = 'model' | 'self';
 type Path = 'a' | 'b';
 
 const ARROW = `<svg class="m-arrow" viewBox="0 0 12 12" aria-hidden="true"><path class="m-arrow__stem" d="M1 6h7"/><path class="m-arrow__head" d="M5.5 2.5 9 6l-3.5 3.5"/></svg>`;
-
-const CHECK = `<span class="word__check" aria-hidden="true"><svg viewBox="0 0 12 12"><path d="M2.5 6.2 4.8 8.5 9.5 3.5"/></svg></span>`;
 
 const PATH_COPY: Record<Path, { title: string; text: string; ceiling: MasteryStatus }> = {
   a: {
@@ -137,34 +144,46 @@ function sentenceBody(
   return html;
 }
 
+export interface WritingPanel {
+  redraw: () => void;
+  /** 词本刚收的新词补进本次目标词；已选满时把没放进去的 id 原样返回，由调用方如实提示。 */
+  selectWords: (ids: string[]) => string[];
+}
+
 export function mountWritingPanel(
   bankRoot: HTMLElement,
   deskRoot: HTMLElement,
   onMasteryChanged: () => void,
-): { redraw: () => void } {
+  onOpenWords: () => void,
+): WritingPanel {
   let selected: string[] = [];
   let task: WritingTask | null = null;
   let mode: Mode = 'self';
   let model: ModelText | null = null;
+  // 示范是按哪一档篇幅写的：改了篇幅，句数/词数仍按当时那档判断，不然会平白显示「偏长」。
+  let modelLength: PassageLength | null = null;
   let trained: MasteryChange[] = [];
   let feedback: Feedback | null = null;
   let advanced: MasteryChange[] = [];
   let draftText = '';
-  let busy: 'model' | 'self' | 'intake' | null = null;
+  let busy: 'model' | 'self' | null = null;
   let modelEngine: string | null = null;
   let feedbackEngine: string | null = null;
-  let intakeOpen = loadWords().length === 0;
-  let intakeRaw = '';
-  let intakeNote: string | null = null;
   let lengthChoice: LengthChoice = 'auto';
   let lengthNote: string | null = null;
   let explain: Explanation | null = null;
   let explainBusy = false;
   let explainEngine: string | null = null;
-  let passageView: 'whole' | 'sentences' = 'sentences';
+  // 网关会把这次实际用的型号带回来；一路网关一个模型，界面就显示这一个。
+  let gatewayModel: string | null = null;
+  let passageView: 'whole' | 'sentences' = 'whole';
   let closedNotes = new Set<number>();
   let notePending = new Set<number>();
   let noteError = new Map<number, string>();
+  let savedNote: string | null = null;
+  let savedListOpen = false;
+  let savedRowOpen: string | null = null;
+  let savedConfirm: string | null = null;
 
   const popover = createWordPopover({
     words: loadWords,
@@ -189,13 +208,15 @@ export function mountWritingPanel(
       </div>
       <p class="hint path-hint" id="path-hint"></p>
     </div>
-    <div id="work-slot"></div>`;
+    <div id="work-slot"></div>
+    <div id="saved-slot"></div>`;
 
   const pathsBox = deskRoot.querySelector<HTMLElement>('#paths')!;
   const indicator = pathsBox.querySelector<HTMLElement>('.m-tab-ind')!;
   const lengthBar = deskRoot.querySelector<HTMLElement>('#lengthbar')!;
   const pathHint = deskRoot.querySelector<HTMLElement>('#path-hint')!;
   const workSlot = deskRoot.querySelector<HTMLElement>('#work-slot')!;
+  const savedSlot = deskRoot.querySelector<HTMLElement>('#saved-slot')!;
   let placed = false;
 
   /** 滑块按目标卡片的实测像素走：百分比 translate 在 Chrome 里会卡住不动。 */
@@ -221,6 +242,7 @@ export function mountWritingPanel(
 
   function resetOutput(): void {
     model = null;
+    modelLength = null;
     trained = [];
     feedback = null;
     advanced = [];
@@ -249,6 +271,7 @@ export function mountWritingPanel(
     if (task?.id !== active.id || model?.text !== source) return;
     explain = result.data;
     explainEngine = result.degraded;
+    gatewayModel = result.model ?? gatewayModel;
     noteError = new Map();
     render();
   }
@@ -269,6 +292,7 @@ export function mountWritingPanel(
       render();
       return;
     }
+    gatewayModel = result.model ?? gatewayModel;
     const merged = new Map(explain.glossary.map((entry) => [entry.term.toLowerCase(), entry]));
     for (const entry of result.data.glossary) {
       if (!merged.has(entry.term.toLowerCase())) merged.set(entry.term.toLowerCase(), entry);
@@ -300,8 +324,24 @@ export function mountWritingPanel(
 
   function engineLine(source: string | null): string {
     return `<p class="engine">${
-      source ? `兜底原因：${escapeHtml(source)}` : '来源：AI 网关（非本地 mock）'
+      source
+        ? `兜底原因：${escapeHtml(source)}`
+        : `来源：AI 网关${gatewayModel ? ` · ${escapeHtml(gatewayModel)}` : ''}`
     }</p>`;
+  }
+
+  /** 保存是结果区的收尾动作：一键存进本机习作集，存过就直说，不放一个按了没反应的按钮。 */
+  function saveRow(kind: SavedKind, text: string, hint: string): string {
+    if (!text.trim()) return '';
+    if (hasSaved(kind, text)) {
+      return `<div class="row"><span class="hint">这篇已存进习作集，切到下面「习作集」就能翻出来。</span></div>`;
+    }
+    return `<div class="row">
+        <button type="button" class="btn btn--secondary btn--sm" id="save-${kind}" data-kind="${kind}" ${
+          busy ? 'disabled' : ''
+        }>保存这篇</button>
+        <span class="hint">${hint} 存在这台设备，换篇幅重写或刷新页面都不会没。</span>
+      </div>`;
   }
 
   function lengthBlock(): string {
@@ -337,134 +377,51 @@ export function mountWritingPanel(
       </div>`;
   }
 
-  function wordRow(word: Word): string {
+  function wordPick(word: Word): string {
     const on = selected.includes(word.id);
     const disabled = busy !== null || (selected.length >= MAX_TARGET_WORDS && !on);
     const meaning = word.meaningZh.trim();
     return `
-      <li>
-        <button type="button" class="word" id="w-${word.id}" data-id="${word.id}"
-          aria-pressed="${on}" ${disabled ? 'disabled' : ''}>
-          ${CHECK}
-          <span class="word__body">
-            <span class="word__hw">${escapeHtml(word.headword)}</span>
-            <span class="word__zh ${meaning ? '' : 'empty'}">${escapeHtml(meaning || '释义待补')}</span>
-          </span>
-          <span class="badge ${word.mastery}"><i class="dot ${word.mastery}" aria-hidden="true"></i>${masteryZh[word.mastery]}</span>
-        </button>
-      </li>`;
+      <button type="button" class="pick" id="w-${word.id}" data-id="${word.id}"
+        aria-pressed="${on}" ${disabled ? 'disabled' : ''}>
+        <i class="dot ${word.mastery}" aria-hidden="true"></i>
+        <span class="pick__hw">${escapeHtml(word.headword)}</span>
+        <span class="pick__zh${meaning ? '' : ' empty'}">${escapeHtml(meaning || '释义待补')}</span>
+        <span class="sr-only">${masteryZh[word.mastery]}</span>
+      </button>`;
   }
 
-  /** 产品的正门：词库不是我们预设的，而是用户把自己正在背的词粘进来。 */
-  function intakeBlock(empty: boolean): string {
-    const open = intakeOpen || empty;
-    // 空词库且框里还没字时，唯一能点的就是样例：让它亮着，别把唯一入口画成次要按钮。
-    const sampleLead = empty && !intakeRaw.trim();
-    return `
-      <div class="intake">
-        <div class="intake__bar">
-          ${
-            empty
-              ? `<button type="button" class="btn ${sampleLead ? 'btn--primary' : 'btn--secondary'} btn--sm" id="intake-sample" ${
-                  busy ? 'disabled' : ''
-                }>试试粘这段</button>`
-              : `<button type="button" class="btn btn--secondary btn--sm" id="intake-toggle" ${
-                  busy ? 'disabled' : ''
-                }>${intakeOpen ? '收起粘贴区' : '粘贴你正在背的词'}</button>`
-          }
-        </div>
-        ${
-          open
-            ? `
-        <label class="hint" for="intake-raw">一串单词、一段带释义的笔记都行，不用管格式</label>
-        <textarea id="intake-raw" rows="3" placeholder="直接粘贴，AI 会整理成词卡…">${escapeHtml(intakeRaw)}</textarea>
-        <div class="intake__bar">
-          <button type="button" class="btn btn--primary btn--sm" id="intake-run" ${
-            busy === 'intake' || !intakeRaw.trim() ? 'disabled' : ''
-          }>${busy === 'intake' ? 'AI 正在整理词卡…' : '整理成词卡'}</button>
-          <span class="hint">一次最多 30 条，已在词库的词头会跳过</span>
-        </div>`
-            : ''
-        }
-        ${intakeNote ? `<p class="engine">${intakeNote}</p>` : ''}
-      </div>`;
-  }
-
-  function renderBank(words: Word[]): void {
+  function renderPick(words: Word[]): void {
     bankRoot.innerHTML = `
       <div class="bank__head">
-        <h2 id="bank-h">我的词库</h2>
-        <span class="bank__count">${words.length} 词</span>
+        <h2 id="bank-h">本次目标词</h2>
+        <span class="bank__count">词本 ${words.length} 词</span>
       </div>
-      <p class="sub">勾 ${MIN_TARGET_WORDS}~${MAX_TARGET_WORDS} 个想练的词，右边按这批词出题。</p>
-      ${intakeBlock(words.length === 0)}
+      <p class="sub">点词卡勾上，${MIN_TARGET_WORDS}~${MAX_TARGET_WORDS} 个；右边按这批词出题。</p>
       ${
         words.length
-          ? `<ul class="words">${words.map(wordRow).join('')}</ul>
-             <div class="bank__foot"><p class="hint">已选 ${selected.length}/${MAX_TARGET_WORDS} · 掌握度只升不降</p></div>`
-          : ''
+          ? `<div class="pickrow">${words.map(wordPick).join('')}</div>
+             <div class="bank__foot">
+               <p class="hint">已选 ${selected.length}/${MAX_TARGET_WORDS} · 掌握度只升不降</p>
+               <button type="button" class="btn btn--secondary btn--sm" id="open-words">去词本收词</button>
+             </div>`
+          : `<div class="pickrow empty">
+               <p class="hint">词本还是空的，先去词本粘一段正在背的笔记收词。</p>
+               <button type="button" class="btn btn--primary btn--sm" id="open-words">去词本收词</button>
+             </div>`
       }`;
 
-    bankRoot.querySelectorAll<HTMLButtonElement>('.word').forEach((row) => {
-      row.addEventListener('click', () => {
+    bankRoot.querySelectorAll<HTMLButtonElement>('.pick').forEach((chip) => {
+      chip.addEventListener('click', () => {
         if (busy) return;
-        const id = row.dataset.id!;
+        const id = chip.dataset.id!;
         selected = selected.includes(id) ? selected.filter((s) => s !== id) : [...selected, id];
         render();
       });
     });
 
-    bankRoot.querySelector<HTMLButtonElement>('#intake-toggle')?.addEventListener('click', () => {
-      if (busy) return;
-      intakeOpen = !intakeOpen;
-      render();
-    });
-
-    bankRoot.querySelector<HTMLButtonElement>('#intake-sample')?.addEventListener('click', () => {
-      if (busy) return;
-      intakeRaw = INTAKE_SAMPLE;
-      intakeOpen = true;
-      render();
-    });
-
-    const rawBox = bankRoot.querySelector<HTMLTextAreaElement>('#intake-raw');
-    rawBox?.addEventListener('input', () => {
-      intakeRaw = rawBox.value;
-      const run = bankRoot.querySelector<HTMLButtonElement>('#intake-run');
-      if (run) run.disabled = busy === 'intake' || !intakeRaw.trim();
-      const sample = bankRoot.querySelector<HTMLButtonElement>('#intake-sample');
-      if (sample) {
-        const lead = !intakeRaw.trim();
-        sample.classList.toggle('btn--primary', lead);
-        sample.classList.toggle('btn--secondary', !lead);
-      }
-    });
-
-    bankRoot.querySelector<HTMLButtonElement>('#intake-run')?.addEventListener('click', async () => {
-      if (busy || !intakeRaw.trim()) return;
-      busy = 'intake';
-      render();
-      const outcome = await importWords(intakeRaw);
-      const names = outcome.added
-        .slice(0, 6)
-        .map((word) => escapeHtml(word.headword))
-        .join('、');
-      const skippedLine = outcome.skipped.length
-        ? `；跳过 ${outcome.skipped.length} 个已在词库里的词`
-        : '';
-      const degradedLine = outcome.degraded ? `<br>兜底原因：${escapeHtml(outcome.degraded)}` : '';
-      intakeNote = outcome.added.length
-        ? `已加入 ${outcome.added.length} 个词：${names}${outcome.added.length > 6 ? ' 等' : ''}${skippedLine}，已替你勾好，点 A 或 B 开始。${degradedLine}`
-        : outcome.skipped.length
-          ? `没有新词入库：粘的 ${outcome.skipped.length} 个词头都已经在词库里了。`
-          : `没识别出词头，换一行一个词的写法再试一次。${degradedLine}`;
-      if (outcome.added.length) {
-        selected = outcome.added.slice(0, MAX_TARGET_WORDS).map((word) => word.id);
-        intakeRaw = '';
-      }
-      busy = null;
-      onMasteryChanged();
-      render();
+    bankRoot.querySelectorAll<HTMLButtonElement>('#open-words').forEach((btn) => {
+      btn.addEventListener('click', () => onOpenWords());
     });
   }
 
@@ -562,6 +519,27 @@ export function mountWritingPanel(
     }${missing ? ` · 还有 ${missing} 句待讲` : ''}</p>`;
   }
 
+  /** 整段的中文由逐句译文按序拼；没讲齐就是空，显示和保存都不拼半截糊弄读者。 */
+  function joinedTranslation(notes: SentenceNote[]): string {
+    const done = notes.filter((note) => note.zh);
+    if (!done.length || done.length < notes.length) return '';
+    return done
+      .map((note) => {
+        const zh = note.zh.trim();
+        return /[。！？.!?]$/.test(zh) ? zh : `${zh}。`;
+      })
+      .join('');
+  }
+
+  function wholeTranslation(notes: SentenceNote[]): string {
+    const joined = joinedTranslation(notes);
+    if (joined) return `<p class="passage__zh">${escapeHtml(joined)}</p>`;
+    const missing = notes.filter((note) => !note.zh).length;
+    return missing && missing < notes.length
+      ? `<p class="passage__zh">译文还差 ${missing} 句，切到「逐句讲解」点那一句重试。</p>`
+      : '';
+  }
+
   function renderModel(words: Word[], spec: PassageLength): string {
     if (busy === 'model') {
       return '<p class="busy"><span class="spinner" aria-hidden="true"></span>AI 正在按题干与篇幅写示范…</p>';
@@ -597,10 +575,22 @@ export function mountWritingPanel(
         </div>
         ${
           passageView === 'whole'
-            ? `<p class="passage__text">${sentenceBody(model.text, [], 'w', keys)}</p>`
+            ? `<div class="passage__pair"><p class="passage__text">${sentenceBody(
+                model.text,
+                [],
+                'w',
+                keys,
+              )}</p>${wholeTranslation(notes)}</div>`
             : `<ol class="sents">${notes.map((note, index) => sentenceCard(note, index, keys)).join('')}</ol>`
         }
-        <p class="statsline">${statsLine(model.text, spec)}</p>
+        <p class="statsline">${statsLine(model.text, modelLength ?? spec)}</p>
+        ${
+          modelLength && !sameSpec(modelLength, spec)
+            ? `<p class="hint">这篇按「${lengthLine(modelLength)}」写的，当前篇幅已改成「${lengthLine(
+                spec,
+              )}」——想存住现在这篇就先点「保存这篇」，再点 A 按新篇幅重写。</p>`
+            : ''
+        }
         ${engineLine(modelEngine)}
         ${explainLine()}
         <p class="mastery ${trained.length ? '' : 'none'}">${
@@ -609,6 +599,7 @@ export function mountWritingPanel(
             : '这些词此前已在「练用中」或「会用」，状态不变。'
         }</p>
         <p class="hint">读示范只到「练用中」。点 B 自己写一段，用出且搭配地道，才会计入「会用」。</p>
+        ${saveRow('model', model.text, '整段英文连拼好的中文译文一起存。')}
       </div>`;
   }
 
@@ -639,6 +630,7 @@ export function mountWritingPanel(
             ? `掌握度回写：${changeLine(advanced)}`
             : '本篇没有词进入「会用」——目标词要用得地道才算数。'
         }</p>
+        ${saveRow('mine', feedback.submittedText, '你写的原文连得分与逐词判定一起存。')}
       </div>`
       : '';
     return `
@@ -712,6 +704,83 @@ export function mountWritingPanel(
       </section>`;
   }
 
+  function savedDay(iso: string): string {
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return '';
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(
+      date.getMinutes(),
+    )}`;
+  }
+
+  function savedBody(item: SavedPassage): string {
+    const score =
+      item.accuracy === null
+        ? ''
+        : `<p class="overall">${escapeHtml(item.overall)}</p>
+           <p class="statsline"><span class="stats ok">用词得分 ${clampScore(item.accuracy)}/100</span></p>`;
+    const usage = item.usages.length
+      ? `<ul class="usage">${item.usages
+          .map((u) => {
+            const cls =
+              u.tag === '用出且地道' ? 'ok' : u.tag === '用出但生硬' ? 'warn' : 'miss';
+            return `<li class="${cls}"><span class="hw">${escapeHtml(u.headword)}</span><span class="tag">${escapeHtml(
+              u.tag,
+            )}</span><span class="note">${escapeHtml(u.note)}</span></li>`;
+          })
+          .join('')}</ul>`
+      : '';
+    return `
+      <p class="saved__text">${escapeHtml(item.text).replace(/\n/g, '<br>')}</p>
+      ${item.zh ? `<p class="passage__zh">${escapeHtml(item.zh)}</p>` : ''}
+      ${score}
+      ${usage}`;
+  }
+
+  /** 习作集：保存下来的示范与自写批改，默认只列一行标题，展开才给正文。 */
+  function savedBlock(): string {
+    const items = loadSaved();
+    if (!items.length) return '';
+    const rows = items
+      .map((item) => {
+        const open = savedRowOpen === item.id;
+        const confirming = savedConfirm === item.id;
+        return `
+          <li class="saved__item" id="saved-${item.id}">
+            <div class="saved__top">
+              <span class="badge">${item.kind === 'model' ? 'AI 示范' : '我的习作'}</span>
+              <span class="saved__title">${escapeHtml(item.title)}</span>
+              <span class="saved__meta">${escapeHtml(item.lengthLabel)} · ${savedDay(item.savedAt)}</span>
+              <button type="button" class="btn btn--sm btn--secondary" id="saved-open-${item.id}"
+                aria-expanded="${open}" aria-controls="saved-body-${item.id}">${open ? '收起' : '打开'}</button>
+              <button type="button" class="btn btn--sm btn--secondary" id="saved-copy-${item.id}">复制</button>
+              <button type="button" class="btn btn--sm btn--secondary" id="saved-del-${item.id}" ${
+                confirming ? 'data-confirm="1"' : ''
+              }>${confirming ? '确认删除' : '删除'}</button>
+            </div>
+            <div class="saved__body" id="saved-body-${item.id}" ${open ? '' : 'hidden'}>${
+              open ? savedBody(item) : ''
+            }</div>
+          </li>`;
+      })
+      .join('');
+    return `
+      <section class="card saved m-nolift" aria-labelledby="saved-h">
+        <div class="saved__head">
+          <h3 id="saved-h">习作集</h3>
+          <span class="badge">${items.length} 篇</span>
+          <button type="button" class="btn btn--sm btn--secondary" id="saved-list"
+            aria-expanded="${savedListOpen}" aria-controls="saved-list-box">${
+              savedListOpen ? '收起列表' : '展开列表'
+            }</button>
+          <span class="hint saved__note" role="status">${escapeHtml(
+            savedNote ?? '存在这台设备的浏览器里，换浏览器看不到。',
+          )}</span>
+        </div>
+        <ul class="saved__list" id="saved-list-box" ${savedListOpen ? '' : 'hidden'}>${rows}</ul>
+      </section>`;
+  }
+
   function pathHintLine(): string {
     if (busy === 'model') return 'AI 正在写示范，稍等一下。';
     if (!task) {
@@ -739,6 +808,7 @@ export function mountWritingPanel(
     });
     placeIndicator();
     workSlot.innerHTML = workCard(words, spec);
+    savedSlot.innerHTML = savedBlock();
 
     workSlot.querySelectorAll<HTMLElement>('.sent__en, .passage__text').forEach((scope) => {
       const first = scope.querySelector<HTMLButtonElement>('.tok');
@@ -814,21 +884,9 @@ export function mountWritingPanel(
         lengthChoice = choice;
         if (task) {
           task = applyLength(task, choice);
-          model = null;
-          trained = [];
-          feedback = null;
-          advanced = [];
-          modelEngine = null;
-          feedbackEngine = null;
-          explain = null;
-          explainBusy = false;
-          explainEngine = null;
-          closedNotes = new Set();
-          notePending = new Set();
-          noteError = new Map();
-          popover.close();
           const label = LENGTH_OPTIONS.find((o) => o.id === choice)?.label ?? choice;
-          lengthNote = `篇幅已改为「${label}」（${lengthLine(taskLength(task))}）：示范与点评已清空，你的草稿保留。`;
+          // 篇幅是下一次生成的参数，不该顺手删掉已经生成的示范和点评。
+          lengthNote = `篇幅已改为「${label}」（${lengthLine(taskLength(task))}）：已生成的示范与点评保留，再点 A 或 B 按新篇幅走。`;
         }
         render();
       });
@@ -841,8 +899,8 @@ export function mountWritingPanel(
       resetOutput();
       render();
       // 换词后这个按钮本身就消失了，把键盘焦点送到下一步要操作的地方。
-      (bankRoot.querySelector<HTMLButtonElement>('.word') ??
-        bankRoot.querySelector<HTMLButtonElement>('#intake-toggle'))?.focus();
+      (bankRoot.querySelector<HTMLButtonElement>('.pick') ??
+        bankRoot.querySelector<HTMLButtonElement>('#open-words'))?.focus();
     });
 
     const draft = deskRoot.querySelector<HTMLTextAreaElement>('#draft');
@@ -866,6 +924,7 @@ export function mountWritingPanel(
       const result = await requestFeedback(active, submission, loadWords());
       feedback = result.data;
       feedbackEngine = result.degraded;
+      gatewayModel = result.model;
       advanced = advanceMastery(result.data);
       setStatus(active.id, 'reviewed');
       task = { ...active, status: 'reviewed' };
@@ -873,6 +932,89 @@ export function mountWritingPanel(
       busy = null;
       onMasteryChanged();
       render();
+    });
+
+    workSlot.querySelectorAll<HTMLButtonElement>('[id^="save-"]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (!task) return;
+        const active = task;
+        const kind = btn.dataset.kind as SavedKind;
+        const result =
+          kind === 'model' && model
+            ? addSaved({
+                kind,
+                title: active.title,
+                lengthLabel: lengthLine(modelLength ?? taskLength(active)),
+                text: model.text,
+                zh: joinedTranslation(explain?.sentences ?? []),
+                accuracy: null,
+                overall: '',
+                usages: [],
+              })
+            : kind === 'mine' && feedback
+              ? (() => {
+                  const judged = savedFeedback(feedback, loadWords());
+                  return addSaved({
+                    kind,
+                    title: active.title,
+                    lengthLabel: lengthLine(taskLength(active)),
+                    text: feedback.submittedText,
+                    zh: '',
+                    ...judged,
+                  });
+                })()
+              : { added: false, items: loadSaved() };
+        savedListOpen = true;
+        savedNote = result.added
+          ? `已存进习作集，共 ${result.items.length} 篇。`
+          : '这篇已经在习作集里了。';
+        if (result.added) savedRowOpen = result.items[0]?.id ?? null;
+        render();
+      });
+    });
+
+    savedSlot.querySelector<HTMLButtonElement>('#saved-list')?.addEventListener('click', () => {
+      savedListOpen = !savedListOpen;
+      render();
+    });
+
+    savedSlot.querySelectorAll<HTMLButtonElement>('[id^="saved-open-"]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.id.slice('saved-open-'.length);
+        savedRowOpen = savedRowOpen === id ? null : id;
+        render();
+      });
+    });
+
+    savedSlot.querySelectorAll<HTMLButtonElement>('[id^="saved-copy-"]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const item = loadSaved().find((saved) => saved.id === btn.id.slice('saved-copy-'.length));
+        if (!item) return;
+        try {
+          await navigator.clipboard.writeText(savedClip(item));
+          savedNote = '正文已复制到剪贴板。';
+        } catch {
+          savedNote = '复制没成功，展开这一行自己选中复制。';
+        }
+        render();
+      });
+    });
+
+    savedSlot.querySelectorAll<HTMLButtonElement>('[id^="saved-del-"]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.id.slice('saved-del-'.length);
+        // 删的是用户自己存下的东西：第一次只把按钮改成「确认删除」。
+        if (savedConfirm !== id) {
+          savedConfirm = id;
+          render();
+          return;
+        }
+        const items = removeSaved(id);
+        savedConfirm = null;
+        if (savedRowOpen === id) savedRowOpen = null;
+        savedNote = items.length ? `已删掉一篇，还剩 ${items.length} 篇。` : '习作集已空。';
+        render();
+      });
     });
   }
 
@@ -886,13 +1028,19 @@ export function mountWritingPanel(
     }
     if (!task) return;
     mode = next;
-    if (next === 'model' && !model) {
+    // 改过篇幅后这篇已经对不上要求，再点 A 是重写，不是继续读旧的那段。
+    const stale = model !== null && modelLength !== null && !sameSpec(modelLength, taskLength(task));
+    if (next === 'model' && (!model || stale)) {
       const active = task;
       busy = 'model';
       render();
       const result = await requestModelText(active, loadWords());
       model = result.data;
+      modelLength = taskLength(active);
+      // 新示范一落地先看整段：连着把这段话读完，再切「逐句讲解」逐句拆。
+      passageView = 'whole';
       modelEngine = result.degraded;
+      gatewayModel = result.model;
       trained = markTraining(result.data.wordIds);
       busy = null;
       onMasteryChanged();
@@ -957,7 +1105,7 @@ export function mountWritingPanel(
     const caret =
       focused instanceof HTMLTextAreaElement ? focused.selectionStart : (refocus?.caret ?? null);
     const words = loadWords();
-    renderBank(words);
+    renderPick(words);
     renderDesk(words);
     popover.reanchor();
     refocus = null;
@@ -975,5 +1123,19 @@ export function mountWritingPanel(
   }
 
   render();
-  return { redraw: render };
+  return {
+    redraw: render,
+    selectWords: (ids) => {
+      const next = [...selected];
+      const overflow: string[] = [];
+      for (const id of ids) {
+        if (next.includes(id)) continue;
+        if (next.length >= MAX_TARGET_WORDS) overflow.push(id);
+        else next.push(id);
+      }
+      selected = next;
+      render();
+      return overflow;
+    },
+  };
 }
