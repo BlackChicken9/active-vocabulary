@@ -1673,6 +1673,7 @@ textarea:focus {
   display: flex;
   align-items: center;
   gap: var(--s-4);
+  flex-wrap: wrap;
 }
 
 .score {
@@ -1772,25 +1773,33 @@ textarea:focus {
 }
 
 /* 习作集：存下来的示范与批改，一行一篇，打开才给正文。全部走现有 token，不另起一套配色。 */
-.saved {
-  margin-top: var(--s-4);
-}
-
 .saved__head {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: var(--s-3);
   flex-wrap: wrap;
 }
 
-.saved__head h3 {
+.saved__head .sub {
+  flex: 1 1 220px;
   margin: 0;
-  font-size: var(--t-body);
-  font-weight: 600;
 }
 
-.saved__note {
-  flex: 1 1 220px;
+/* 存过之后原来的按钮位置换成这枚状态：一眼看得见「已经存了」，旁边直接跳习作集。 */
+.saved__tag {
+  padding: 4px var(--s-3);
+  border: 1px solid color-mix(in oklab, var(--accent) 40%, var(--line));
+  border-radius: var(--r-btn);
+  color: color-mix(in oklab, var(--accent) 80%, var(--ink));
+  background: color-mix(in oklab, var(--accent) 12%, transparent);
+  font-size: var(--t-label);
+  white-space: nowrap;
+}
+
+.saved__head h2 {
+  margin: 0;
+  font-size: var(--t-h3);
+  line-height: 1.3;
 }
 
 .saved__list {

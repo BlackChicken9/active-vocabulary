@@ -189,9 +189,9 @@ function parseLength(value: unknown, wordCount: number): PassageLength {
   const num = (input: unknown, fallback: number): number =>
     typeof input === 'number' && Number.isFinite(input) ? Math.round(input) : fallback;
   const minSentences = Math.min(12, Math.max(1, num(record.minSentences, Math.min(8, Math.max(2, wordCount)))));
-  const maxSentences = Math.min(12, Math.max(minSentences, num(record.maxSentences, minSentences + 2)));
-  const minWords = Math.min(400, Math.max(10, num(record.minWords, minSentences * 14)));
-  const maxWords = Math.min(400, Math.max(minWords, num(record.maxWords, maxSentences * 18)));
+  const maxSentences = Math.min(12, Math.max(minSentences, num(record.maxSentences, minSentences + 1)));
+  const minWords = Math.min(400, Math.max(10, num(record.minWords, minSentences * 12)));
+  const maxWords = Math.min(400, Math.max(minWords, num(record.maxWords, maxSentences * 16)));
   return { minSentences, maxSentences, minWords, maxWords };
 }
 

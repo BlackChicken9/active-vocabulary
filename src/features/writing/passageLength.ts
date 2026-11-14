@@ -14,16 +14,16 @@ const PRESETS: Record<Exclude<LengthChoice, 'auto'>, PassageLength> = {
   long: { minSentences: 7, maxSentences: 10, minWords: 100, maxWords: 180 },
 };
 
-/** 自动档：一个词至少摊到一句，再多两句把场景写完整；词数按每句 14~18 词估。 */
+/** 自动档：一个词至少摊到一句，最多多一句把场景收尾；每句按 12~16 词估，别让两段词写成小作文。 */
 export function passageSpec(choice: LengthChoice, wordCount: number): PassageLength {
   if (choice !== 'auto') return PRESETS[choice];
   const minSentences = Math.min(8, Math.max(2, wordCount));
-  const maxSentences = minSentences + 2;
+  const maxSentences = minSentences + 1;
   return {
     minSentences,
     maxSentences,
-    minWords: minSentences * 14,
-    maxWords: maxSentences * 18,
+    minWords: minSentences * 12,
+    maxWords: maxSentences * 16,
   };
 }
 

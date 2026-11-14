@@ -1,9 +1,11 @@
 import './style.css';
 import type { MasteryStatus } from './types';
 import { loadWords } from './features/words/wordStore';
+import { loadSaved } from './features/writing/savedStore';
 import { clearModelKey, keyTail, loadModelKey, saveModelKey } from './modelKey';
 import { mountWordsPanel, type WordsPanel } from './features/words/wordsPanel';
 import { mountWritingPanel } from './features/writing/writingPanel';
+import { mountSavedPanel, type SavedPanel } from './features/writing/savedPanel';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 
@@ -28,12 +30,15 @@ app.innerHTML = `
     </div>
   </header>
   <nav class="viewnav" aria-label="视图切换">
-    <div class="viewnav__in seg" role="group" aria-label="写作与词本">
+    <div class="viewnav__in seg" role="group" aria-label="写作、词本与习作集">
       <button type="button" class="seg-btn" data-view="write" aria-pressed="true">
         <strong>写作</strong><small>按词出题 · 逐句点评</small>
       </button>
       <button type="button" class="seg-btn" data-view="words" aria-pressed="false">
         <strong>词本</strong><small>粘笔记收词 · 学搭配</small>
+      </button>
+      <button type="button" class="seg-btn" data-view="saved" aria-pressed="false">
+        <strong>习作集</strong><small id="saved-sub">存下的示范与批改</small>
       </button>
     </div>
   </nav>
@@ -43,6 +48,9 @@ app.innerHTML = `
   </main>
   <main class="layout layout--view layout--single" id="view-words" hidden>
     <section class="card wb m-nolift" id="words-panel" tabindex="-1" aria-labelledby="wb-h"></section>
+  </main>
+  <main class="layout layout--view layout--single" id="view-saved" hidden>
+    <section class="card saved m-nolift" id="saved-panel" tabindex="-1" aria-labelledby="saved-h"></section>
   </main>
   <footer class="foot">
     <div class="foot__in">
@@ -89,7 +97,6 @@ function renderTally(): void {
 }
 
 renderTally();
-
 /**
  * 模型密钥：粘了自己的 key 就走自己的额度，没粘就用站点 Secret。
  * 值只进 localStorage 和请求头，输入框 type=password、保存即清空，界面只留尾号。
@@ -131,26 +138,43 @@ function mountKeyRow(): void {
 
 mountKeyRow();
 
-type View = 'write' | 'words';
+type View = 'write' | 'words' | 'saved';
 
 const skip = document.querySelector<HTMLAnchorElement>('#skip')!;
 const views: Record<View, HTMLElement> = {
   write: document.querySelector<HTMLElement>('#view-write')!,
   words: document.querySelector<HTMLElement>('#view-words')!,
+  saved: document.querySelector<HTMLElement>('#view-saved')!,
 };
 const viewButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('.viewnav .seg-btn'));
 const wordsRoot = document.querySelector<HTMLElement>('#words-panel')!;
+const savedRoot = document.querySelector<HTMLElement>('#saved-panel')!;
+const savedSub = document.querySelector<HTMLElement>('#saved-sub')!;
+
+/** 顶栏那档随时告诉用户习作集里现在有几篇——存完不用切过去才知道有没有生效。 */
+function renderSavedCount(): void {
+  const n = loadSaved().length;
+  savedSub.textContent = n ? `存下的示范与批改 · ${n} 篇` : '存下的示范与批改';
+}
 
 const writing = mountWritingPanel(
   document.querySelector<HTMLElement>('#bank')!,
   document.querySelector<HTMLElement>('#desk')!,
   renderTally,
   () => go('words'),
+  () => go('saved'),
+  renderSavedCount,
 );
 let words: WordsPanel | null = null;
+let saved: SavedPanel | null = null;
 
 /** 页内锚点用 #desk / #words-panel，视图 hash 必须带 / 前缀才不撞车。 */
-const HASH: Record<View, string> = { write: '#/write', words: '#/words' };
+const HASH: Record<View, string> = { write: '#/write', words: '#/words', saved: '#/saved' };
+const SKIP: Record<View, { href: string; label: string }> = {
+  write: { href: '#desk', label: '跳到写作区' },
+  words: { href: '#words-panel', label: '跳到词本' },
+  saved: { href: '#saved-panel', label: '跳到习作集' },
+};
 let current: View = 'write';
 
 /** 认不出来的 hash 是页内锚点（#desk / #words-panel），不是路由：交给调用方留在当前屏。 */
@@ -173,16 +197,18 @@ function showView(view: View): void {
         onWordsAdded: (ids) => writing.selectWords(ids),
       });
     words.redraw();
+  } else if (view === 'saved') {
+    saved = saved ?? mountSavedPanel(savedRoot, () => go('write'), renderSavedCount);
+    saved.redraw();
   } else {
     writing.redraw();
   }
-  views.write.hidden = view !== 'write';
-  views.words.hidden = view !== 'words';
+  for (const name of Object.keys(views) as View[]) views[name].hidden = name !== view;
   for (const button of viewButtons) {
     button.setAttribute('aria-pressed', String(button.dataset.view === view));
   }
-  skip.setAttribute('href', view === 'write' ? '#desk' : '#words-panel');
-  skip.textContent = view === 'write' ? '跳到写作区' : '跳到词本';
+  skip.setAttribute('href', SKIP[view].href);
+  skip.textContent = SKIP[view].label;
 }
 
 /** 换屏的唯一入口：改 hash，剩下的交给 hashchange，浏览器后退键因此能退回上一屏。 */
@@ -197,4 +223,5 @@ for (const button of viewButtons) {
 
 window.addEventListener('hashchange', () => showView(viewFromHash() ?? current));
 
+renderSavedCount();
 showView(viewFromHash() ?? 'write');
