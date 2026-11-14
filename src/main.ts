@@ -1,6 +1,5 @@
 import './style.css';
 import type { MasteryStatus } from './types';
-import { escapeHtml } from './escapeHtml';
 import { loadWords } from './features/words/wordStore';
 import { mountWritingPanel } from './features/writing/writingPanel';
 
@@ -12,34 +11,63 @@ const masteryZh: Record<MasteryStatus, string> = {
   active: '会用',
 };
 
-app.innerHTML = `
-  <main class="layout">
-    <section class="panel" id="wordbook"></section>
-    <div class="stack" id="writing"></div>
-  </main>`;
+const LADDER: MasteryStatus[] = ['passive', 'training', 'active'];
 
-function renderWordbook(): void {
+app.innerHTML = `
+  <a class="skip-link" href="#desk">跳到写作区</a>
+  <header class="topbar">
+    <div class="topbar__in">
+      <div class="brand">
+        <span class="mark" aria-hidden="true"></span>
+        <h1 class="brand__name">主动词库</h1>
+        <span class="brand__line">把认识的词练成会用的词</span>
+      </div>
+      <div class="tally" id="tally" aria-live="polite" aria-label="词库掌握度统计"></div>
+    </div>
+  </header>
+  <main class="layout">
+    <aside class="card bank m-nolift" id="bank" aria-labelledby="bank-h"></aside>
+    <section class="desk" id="desk" aria-labelledby="desk-h" tabindex="-1"></section>
+  </main>
+  <footer class="foot">
+    <div class="foot__in">
+      <span>词库与草稿只存在这台设备的浏览器里。</span>
+      <span>示范与点评走站点 Function，用你自己的模型密钥。</span>
+    </div>
+  </footer>`;
+
+const tally = document.querySelector<HTMLElement>('#tally')!;
+
+tally.innerHTML = `
+  <div class="tally__bar" aria-hidden="true">
+    ${LADDER.map((status) => `<span class="tally__seg ${status}" data-seg="${status}"></span>`).join('')}
+  </div>
+  <div class="tally__legend">
+    ${LADDER.map(
+      (status) => `<span class="tally__item" data-item="${status}">
+        <i class="dot ${status}" aria-hidden="true"></i><b data-n="${status}">0</b><span>${masteryZh[status]}</span>
+      </span>`,
+    ).join('')}
+  </div>`;
+
+/** 词条换档时只改宽度与数字，色带才能把「认识 → 练用中 → 会用」的挪动画出来。 */
+function renderTally(): void {
   const words = loadWords();
-  document.querySelector<HTMLElement>('#wordbook')!.innerHTML = `
-    <h1>主动词库</h1>
-    <p class="sub">把「认识」的词练成「会用」的词 · 词卡学习页与收词表单是队友 B 的任务位</p>
-    ${
-      words.length
-        ? `<ul class="words">
-      ${words
-        .map(
-          (w) => `
-        <li class="word ${w.mastery}">
-          <span class="hw">${escapeHtml(w.headword)}</span>
-          <span class="zh">${escapeHtml(w.meaningZh)}</span>
-          <span class="badge">${masteryZh[w.mastery]}</span>
-        </li>`,
-        )
-        .join('')}
-    </ul>`
-        : '<p class="hint">词库还是空的：在右边把你正在背的词粘进来，这里会显示每个词的掌握度。</p>'
-    }`;
+  for (const status of LADDER) {
+    const n = words.filter((w) => w.mastery === status).length;
+    tally.querySelector<HTMLElement>(`[data-seg="${status}"]`)!.style.width = words.length
+      ? `${(n / words.length) * 100}%`
+      : '0%';
+    tally.querySelector<HTMLElement>(`[data-n="${status}"]`)!.textContent = String(n);
+    tally
+      .querySelector<HTMLElement>(`[data-item="${status}"]`)!
+      .setAttribute('aria-label', `${masteryZh[status]} ${n} 个词`);
+  }
 }
 
-renderWordbook();
-mountWritingPanel(document.querySelector<HTMLElement>('#writing')!, renderWordbook);
+renderTally();
+mountWritingPanel(
+  document.querySelector<HTMLElement>('#bank')!,
+  document.querySelector<HTMLElement>('#desk')!,
+  renderTally,
+);
