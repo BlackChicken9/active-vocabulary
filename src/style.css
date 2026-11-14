@@ -534,6 +534,11 @@ html[data-buttons='pill'] .btn--primary:disabled::after {
   font-size: var(--t-small);
 }
 
+/* .layout 自己声明了 display，会盖掉浏览器默认的 [hidden]，切屏时两屏会叠在一起——这里补回全局铁则。 */
+[hidden] {
+  display: none !important;
+}
+
 .layout {
   display: grid;
   grid-template-columns: minmax(300px, 372px) minmax(0, 1fr);
@@ -565,6 +570,11 @@ html[data-buttons='pill'] .btn--primary:disabled::after {
 }
 
 .bank__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  flex-wrap: wrap;
   border-top: 1px solid var(--line);
   padding-top: var(--s-3);
 }
@@ -637,132 +647,77 @@ textarea:focus {
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--action) 22%, transparent);
 }
 
-.words {
+.pickrow {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: min(46svh, 460px);
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: var(--s-2);
+  max-height: min(46svh, 420px);
   overflow-y: auto;
   padding-right: 4px;
   margin-right: -4px;
 }
 
-.word {
-  display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) auto;
-  align-items: center;
+.pickrow.empty {
+  flex-direction: column;
+  align-items: flex-start;
   gap: var(--s-3);
-  width: 100%;
-  min-height: 48px;
-  padding: var(--s-2) var(--s-3);
-  border: 1px solid transparent;
-  border-radius: var(--r-md);
+  max-height: none;
+  overflow: visible;
+}
+
+.pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: var(--btn-h-sm);
+  max-width: 100%;
+  padding: 0 var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-btn);
   background: color-mix(in oklab, var(--ink) 4%, transparent);
-  color: var(--ink);
-  font: inherit;
-  text-align: left;
+  color: var(--muted);
+  font: 500 var(--t-small) / 1 var(--font-text);
   cursor: pointer;
   transition:
     background-color 120ms var(--ease),
-    border-color 120ms var(--ease);
+    border-color 120ms var(--ease),
+    color 120ms var(--ease);
 }
 
-.word__check {
-  display: grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  border: 1.5px solid var(--line-strong);
-  border-radius: 6px;
-  color: transparent;
-  flex: none;
+.pick .dot {
+  width: 7px;
+  height: 7px;
 }
 
-.word__check svg {
-  width: 12px;
-  height: 12px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2.2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.word__body {
-  min-width: 0;
-}
-
-.word__hw {
-  display: block;
-  font-size: var(--t-body);
-  font-weight: 500;
-  letter-spacing: -0.01em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.word__zh {
-  display: block;
-  color: var(--muted);
-  font-size: var(--t-label);
-  line-height: 1.45;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.word__zh.empty {
-  /* 不再压暗：压到 3.3:1 读不清，用斜体区分「还没释义」。 */
-  color: var(--muted);
-  font-style: italic;
-}
-
-.word[aria-pressed='true'] {
+.pick[aria-pressed='true'] {
   border-color: color-mix(in oklab, var(--accent) 55%, transparent);
   background: color-mix(in oklab, var(--accent) 13%, transparent);
+  color: var(--ink);
 }
 
-.word[aria-pressed='true'] .word__check {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--accent-ink);
-}
-
-.word:disabled {
+.pick:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 
+.pick:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
+}
+
 @media (hover: hover) and (pointer: fine) {
-  .word:not(:disabled):hover {
+  .pick:not(:disabled):hover {
     background: color-mix(in oklab, var(--ink) 9%, transparent);
     border-color: var(--line-strong);
+    color: var(--ink);
     transition-duration: 150ms;
   }
 
-  .word[aria-pressed='true']:not(:disabled):hover {
+  .pick[aria-pressed='true']:not(:disabled):hover {
     background: color-mix(in oklab, var(--accent) 19%, transparent);
     border-color: var(--accent);
   }
-}
-
-.word .badge {
-  padding: 2px 8px;
-}
-
-.word .badge.passive {
-  color: var(--st-passive);
-}
-
-.word .badge.training {
-  color: var(--st-training);
-  border-color: color-mix(in oklab, var(--st-training) 35%, transparent);
-}
-
-.word .badge.active {
-  color: var(--st-active);
-  border-color: color-mix(in oklab, var(--st-active) 35%, transparent);
 }
 
 .lengthbar {
@@ -1883,6 +1838,15 @@ textarea:focus {
   line-height: 1.4;
 }
 
+.wcollect-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  border-top: 1px solid var(--line);
+  padding-top: var(--s-3);
+}
+
 .wfilter {
   display: flex;
   flex-wrap: wrap;
@@ -2191,8 +2155,8 @@ textarea:focus {
     padding-top: calc(var(--nav) + var(--s-5));
   }
 
-  .words {
-    max-height: 264px;
+  .pickrow {
+    max-height: 148px;
   }
 
   .brand__line {

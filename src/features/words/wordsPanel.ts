@@ -1,12 +1,23 @@
 import type { Word } from '../../types';
 import { escapeHtml } from '../../escapeHtml';
 import { loadWords } from './wordStore';
+import { importWords } from './intake';
+import { INTAKE_SAMPLE } from './intakeSample';
 import { masteryOrder, masteryZh, type MasteryFilter } from './mastery';
 import { mountAddWordForm } from './addWordForm';
 import { mountWordDetailView } from './wordDetailView';
 
 export interface WordsPanel {
   redraw: () => void;
+}
+
+export interface WordsPanelOptions {
+  /** 词库或掌握度变了，让外壳重算顶部统计。 */
+  onChanged?: () => void;
+  /** 粘贴收词成功后把新词交给写作页当目标词。 */
+  onWordsAdded?: (ids: string[]) => void;
+  /** 「去写作」按钮：由外壳负责切屏。 */
+  onGoWrite?: () => void;
 }
 
 function wordCardHtml(word: Word): string {
@@ -50,7 +61,7 @@ function chipsHtml(words: Word[], filter: MasteryFilter): string {
 function listHtml(words: Word[], filter: MasteryFilter): string {
   const chips = `<div class="wfilter" role="group" aria-label="按掌握度筛选">${chipsHtml(words, filter)}</div>`;
   if (words.length === 0) {
-    return `${chips}<p class="wempty">词本还是空的。在「写作」页粘贴一段英文就能批量收词，也可以在上面手动填一个。</p>`;
+    return `${chips}<p class="wempty">词本还是空的。粘一段正在背的笔记，或者手动填一个词。</p>`;
   }
   const visible = filter === 'all' ? words : words.filter((w) => w.mastery === filter);
   return `${chips}${
@@ -60,9 +71,14 @@ function listHtml(words: Word[], filter: MasteryFilter): string {
   }`;
 }
 
-export function mountWordsPanel(root: HTMLElement, onChanged?: () => void): WordsPanel {
+export function mountWordsPanel(root: HTMLElement, options: WordsPanelOptions = {}): WordsPanel {
   let filter: MasteryFilter = 'all';
   let openWordId: string | null = null;
+  let intakeRaw = '';
+  let intakeNote = '';
+  let intakeJump = false;
+  let intakeBusy = false;
+  let manualOpen = false;
   let flash = '';
 
   function draw(): void {
@@ -72,7 +88,7 @@ export function mountWordsPanel(root: HTMLElement, onChanged?: () => void): Word
     root.innerHTML = `
       <div class="wb__head">
         <h2 id="wb-h">词本</h2>
-        <p class="sub">收词 → 学搭配例句 → 写作里用出来</p>
+        <span class="bank__count">${words.length} 词</span>
       </div>
       <div class="wpanel-body"></div>`;
     const body = root.querySelector<HTMLElement>('.wpanel-body')!;
@@ -85,19 +101,103 @@ export function mountWordsPanel(root: HTMLElement, onChanged?: () => void): Word
         },
         onChanged: () => draw(),
       });
-      onChanged?.();
+      options.onChanged?.();
       return;
     }
 
     body.innerHTML = `
-      <div class="wform-host"></div>
+      <div class="intake">
+        <label class="hint" for="intake-raw">一串单词、一段带释义的笔记都行，不用管格式</label>
+        <textarea id="intake-raw" rows="4" placeholder="直接粘贴，AI 会整理成词卡…">${escapeHtml(intakeRaw)}</textarea>
+        <div class="intake__bar">
+          <button type="button" class="btn btn--primary btn--sm" id="intake-run" ${
+            intakeBusy || !intakeRaw.trim() ? 'disabled' : ''
+          }>${intakeBusy ? 'AI 正在整理词卡…' : '整理成词卡'}</button>
+          <button type="button" class="btn btn--secondary btn--sm" id="intake-sample" ${
+            intakeBusy ? 'disabled' : ''
+          }>试试粘这段</button>
+          <span class="hint">一次最多 30 条，已在词库的词头会跳过</span>
+        </div>
+        ${
+          intakeNote
+            ? `<div class="intake__bar"><p class="engine">${intakeNote}</p>${
+                intakeJump
+                  ? '<button type="button" class="btn btn--secondary btn--sm" id="go-write">去写作</button>'
+                  : ''
+              }</div>`
+            : ''
+        }
+      </div>
+      <div class="wcollect-bar">
+        <button type="button" class="btn btn--sm btn--secondary" id="manual-toggle" aria-expanded="${manualOpen}">${
+          manualOpen ? '收起手动填词' : '手动填一个'
+        }</button>
+      </div>
+      ${manualOpen ? '<div class="wform-host"></div>' : ''}
       ${flash ? `<p class="wnote">${escapeHtml(flash)}</p>` : ''}
       <div class="wlist-host"></div>`;
 
-    mountAddWordForm(body.querySelector<HTMLElement>('.wform-host')!, (headword) => {
-      flash = `已收录「${headword}」，刷新后仍在词本里。`;
+    const rawBox = body.querySelector<HTMLTextAreaElement>('#intake-raw')!;
+    rawBox.addEventListener('input', () => {
+      intakeRaw = rawBox.value;
+      const run = body.querySelector<HTMLButtonElement>('#intake-run');
+      if (run) run.disabled = intakeBusy || !intakeRaw.trim();
+    });
+
+    body.querySelector<HTMLButtonElement>('#intake-sample')?.addEventListener('click', () => {
+      if (intakeBusy) return;
+      intakeRaw = INTAKE_SAMPLE;
+      intakeNote = '';
+      draw();
+      const again = root.querySelector<HTMLTextAreaElement>('#intake-raw');
+      again?.focus();
+      again?.setSelectionRange(again.value.length, again.value.length);
+    });
+
+    body.querySelector<HTMLButtonElement>('#intake-run')?.addEventListener('click', async () => {
+      if (intakeBusy || !intakeRaw.trim()) return;
+      intakeBusy = true;
+      draw();
+      const outcome = await importWords(intakeRaw);
+      intakeBusy = false;
+      const names = outcome.added
+        .slice(0, 6)
+        .map((word) => escapeHtml(word.headword))
+        .join('、');
+      const skippedLine = outcome.skipped.length
+        ? `；跳过 ${outcome.skipped.length} 个已在词库里的词`
+        : '';
+      const degradedLine = outcome.degraded ? `<br>兜底原因：${escapeHtml(outcome.degraded)}` : '';
+      intakeJump = outcome.added.length > 0;
+      intakeNote = outcome.added.length
+        ? `已加入 ${outcome.added.length} 个词：${names}${outcome.added.length > 6 ? ' 等' : ''}${skippedLine}，已经替你勾成这次的目标词。${degradedLine}`
+        : outcome.skipped.length
+          ? `没有新词入库：粘的 ${outcome.skipped.length} 个词头都已经在词本里了。`
+          : `没识别出词头，换一行一个词的写法再试一次。${degradedLine}`;
+      if (outcome.added.length) {
+        options.onWordsAdded?.(outcome.added.map((word) => word.id));
+        intakeRaw = '';
+      }
+      options.onChanged?.();
       draw();
     });
+
+    body.querySelector<HTMLButtonElement>('#go-write')?.addEventListener('click', () => {
+      options.onGoWrite?.();
+    });
+
+    body.querySelector<HTMLButtonElement>('#manual-toggle')?.addEventListener('click', () => {
+      manualOpen = !manualOpen;
+      draw();
+      if (manualOpen) root.querySelector<HTMLInputElement>('#wb-headword')?.focus();
+    });
+
+    if (manualOpen) {
+      mountAddWordForm(body.querySelector<HTMLElement>('.wform-host')!, (headword) => {
+        flash = `已收录「${headword}」，刷新后仍在词本里。`;
+        draw();
+      });
+    }
 
     const listHost = body.querySelector<HTMLElement>('.wlist-host')!;
     listHost.innerHTML = listHtml(words, filter);
@@ -115,7 +215,7 @@ export function mountWordsPanel(root: HTMLElement, onChanged?: () => void): Word
       });
     });
 
-    onChanged?.();
+    options.onChanged?.();
   }
 
   draw();

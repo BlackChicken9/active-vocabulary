@@ -2,8 +2,6 @@ import type { Explanation, Feedback, LengthChoice, MasteryStatus, PassageLength,
 import { escapeHtml } from '../../escapeHtml';
 import { loadWords } from '../words/wordStore';
 import { requestExplain, requestFeedback, requestModelText } from './aiClient';
-import { importWords } from './intake';
-import { INTAKE_SAMPLE } from './intakeSample';
 import { advanceMastery, markTraining, type MasteryChange } from './masteryUpdate';
 import { lemmaCandidates, roleClass, segmentSentence, splitSentences, tokenize } from './passage';
 import {
@@ -35,8 +33,6 @@ type Mode = 'model' | 'self';
 type Path = 'a' | 'b';
 
 const ARROW = `<svg class="m-arrow" viewBox="0 0 12 12" aria-hidden="true"><path class="m-arrow__stem" d="M1 6h7"/><path class="m-arrow__head" d="M5.5 2.5 9 6l-3.5 3.5"/></svg>`;
-
-const CHECK = `<span class="word__check" aria-hidden="true"><svg viewBox="0 0 12 12"><path d="M2.5 6.2 4.8 8.5 9.5 3.5"/></svg></span>`;
 
 const PATH_COPY: Record<Path, { title: string; text: string; ceiling: MasteryStatus }> = {
   a: {
@@ -137,11 +133,18 @@ function sentenceBody(
   return html;
 }
 
+export interface WritingPanel {
+  redraw: () => void;
+  /** 词本刚收进来的新词直接当这次的目标词，省得回写作页再勾一遍。 */
+  selectWords: (ids: string[]) => void;
+}
+
 export function mountWritingPanel(
   bankRoot: HTMLElement,
   deskRoot: HTMLElement,
   onMasteryChanged: () => void,
-): { redraw: () => void } {
+  onOpenWords: () => void,
+): WritingPanel {
   let selected: string[] = [];
   let task: WritingTask | null = null;
   let mode: Mode = 'self';
@@ -150,12 +153,9 @@ export function mountWritingPanel(
   let feedback: Feedback | null = null;
   let advanced: MasteryChange[] = [];
   let draftText = '';
-  let busy: 'model' | 'self' | 'intake' | null = null;
+  let busy: 'model' | 'self' | null = null;
   let modelEngine: string | null = null;
   let feedbackEngine: string | null = null;
-  let intakeOpen = loadWords().length === 0;
-  let intakeRaw = '';
-  let intakeNote: string | null = null;
   let lengthChoice: LengthChoice = 'auto';
   let lengthNote: string | null = null;
   let explain: Explanation | null = null;
@@ -337,134 +337,49 @@ export function mountWritingPanel(
       </div>`;
   }
 
-  function wordRow(word: Word): string {
+  function wordPick(word: Word): string {
     const on = selected.includes(word.id);
     const disabled = busy !== null || (selected.length >= MAX_TARGET_WORDS && !on);
-    const meaning = word.meaningZh.trim();
     return `
-      <li>
-        <button type="button" class="word" id="w-${word.id}" data-id="${word.id}"
-          aria-pressed="${on}" ${disabled ? 'disabled' : ''}>
-          ${CHECK}
-          <span class="word__body">
-            <span class="word__hw">${escapeHtml(word.headword)}</span>
-            <span class="word__zh ${meaning ? '' : 'empty'}">${escapeHtml(meaning || '释义待补')}</span>
-          </span>
-          <span class="badge ${word.mastery}"><i class="dot ${word.mastery}" aria-hidden="true"></i>${masteryZh[word.mastery]}</span>
-        </button>
-      </li>`;
+      <button type="button" class="pick" id="w-${word.id}" data-id="${word.id}"
+        aria-pressed="${on}" aria-label="${escapeHtml(word.headword)}，${masteryZh[word.mastery]}" ${
+        disabled ? 'disabled' : ''
+      }>
+        <i class="dot ${word.mastery}" aria-hidden="true"></i>${escapeHtml(word.headword)}
+      </button>`;
   }
 
-  /** 产品的正门：词库不是我们预设的，而是用户把自己正在背的词粘进来。 */
-  function intakeBlock(empty: boolean): string {
-    const open = intakeOpen || empty;
-    // 空词库且框里还没字时，唯一能点的就是样例：让它亮着，别把唯一入口画成次要按钮。
-    const sampleLead = empty && !intakeRaw.trim();
-    return `
-      <div class="intake">
-        <div class="intake__bar">
-          ${
-            empty
-              ? `<button type="button" class="btn ${sampleLead ? 'btn--primary' : 'btn--secondary'} btn--sm" id="intake-sample" ${
-                  busy ? 'disabled' : ''
-                }>试试粘这段</button>`
-              : `<button type="button" class="btn btn--secondary btn--sm" id="intake-toggle" ${
-                  busy ? 'disabled' : ''
-                }>${intakeOpen ? '收起粘贴区' : '粘贴你正在背的词'}</button>`
-          }
-        </div>
-        ${
-          open
-            ? `
-        <label class="hint" for="intake-raw">一串单词、一段带释义的笔记都行，不用管格式</label>
-        <textarea id="intake-raw" rows="3" placeholder="直接粘贴，AI 会整理成词卡…">${escapeHtml(intakeRaw)}</textarea>
-        <div class="intake__bar">
-          <button type="button" class="btn btn--primary btn--sm" id="intake-run" ${
-            busy === 'intake' || !intakeRaw.trim() ? 'disabled' : ''
-          }>${busy === 'intake' ? 'AI 正在整理词卡…' : '整理成词卡'}</button>
-          <span class="hint">一次最多 30 条，已在词库的词头会跳过</span>
-        </div>`
-            : ''
-        }
-        ${intakeNote ? `<p class="engine">${intakeNote}</p>` : ''}
-      </div>`;
-  }
-
-  function renderBank(words: Word[]): void {
+  function renderPick(words: Word[]): void {
     bankRoot.innerHTML = `
       <div class="bank__head">
-        <h2 id="bank-h">我的词库</h2>
-        <span class="bank__count">${words.length} 词</span>
+        <h2 id="bank-h">本次目标词</h2>
+        <span class="bank__count">词本 ${words.length} 词</span>
       </div>
-      <p class="sub">勾 ${MIN_TARGET_WORDS}~${MAX_TARGET_WORDS} 个想练的词，右边按这批词出题。</p>
-      ${intakeBlock(words.length === 0)}
+      <p class="sub">点词头勾上，${MIN_TARGET_WORDS}~${MAX_TARGET_WORDS} 个；右边按这批词出题。</p>
       ${
         words.length
-          ? `<ul class="words">${words.map(wordRow).join('')}</ul>
-             <div class="bank__foot"><p class="hint">已选 ${selected.length}/${MAX_TARGET_WORDS} · 掌握度只升不降</p></div>`
-          : ''
+          ? `<div class="pickrow">${words.map(wordPick).join('')}</div>
+             <div class="bank__foot">
+               <p class="hint">已选 ${selected.length}/${MAX_TARGET_WORDS} · 掌握度只升不降</p>
+               <button type="button" class="btn btn--secondary btn--sm" id="open-words">去词本收词</button>
+             </div>`
+          : `<div class="pickrow empty">
+               <p class="hint">词本还是空的，先去词本粘一段正在背的笔记收词。</p>
+               <button type="button" class="btn btn--primary btn--sm" id="open-words">去词本收词</button>
+             </div>`
       }`;
 
-    bankRoot.querySelectorAll<HTMLButtonElement>('.word').forEach((row) => {
-      row.addEventListener('click', () => {
+    bankRoot.querySelectorAll<HTMLButtonElement>('.pick').forEach((chip) => {
+      chip.addEventListener('click', () => {
         if (busy) return;
-        const id = row.dataset.id!;
+        const id = chip.dataset.id!;
         selected = selected.includes(id) ? selected.filter((s) => s !== id) : [...selected, id];
         render();
       });
     });
 
-    bankRoot.querySelector<HTMLButtonElement>('#intake-toggle')?.addEventListener('click', () => {
-      if (busy) return;
-      intakeOpen = !intakeOpen;
-      render();
-    });
-
-    bankRoot.querySelector<HTMLButtonElement>('#intake-sample')?.addEventListener('click', () => {
-      if (busy) return;
-      intakeRaw = INTAKE_SAMPLE;
-      intakeOpen = true;
-      render();
-    });
-
-    const rawBox = bankRoot.querySelector<HTMLTextAreaElement>('#intake-raw');
-    rawBox?.addEventListener('input', () => {
-      intakeRaw = rawBox.value;
-      const run = bankRoot.querySelector<HTMLButtonElement>('#intake-run');
-      if (run) run.disabled = busy === 'intake' || !intakeRaw.trim();
-      const sample = bankRoot.querySelector<HTMLButtonElement>('#intake-sample');
-      if (sample) {
-        const lead = !intakeRaw.trim();
-        sample.classList.toggle('btn--primary', lead);
-        sample.classList.toggle('btn--secondary', !lead);
-      }
-    });
-
-    bankRoot.querySelector<HTMLButtonElement>('#intake-run')?.addEventListener('click', async () => {
-      if (busy || !intakeRaw.trim()) return;
-      busy = 'intake';
-      render();
-      const outcome = await importWords(intakeRaw);
-      const names = outcome.added
-        .slice(0, 6)
-        .map((word) => escapeHtml(word.headword))
-        .join('、');
-      const skippedLine = outcome.skipped.length
-        ? `；跳过 ${outcome.skipped.length} 个已在词库里的词`
-        : '';
-      const degradedLine = outcome.degraded ? `<br>兜底原因：${escapeHtml(outcome.degraded)}` : '';
-      intakeNote = outcome.added.length
-        ? `已加入 ${outcome.added.length} 个词：${names}${outcome.added.length > 6 ? ' 等' : ''}${skippedLine}，已替你勾好，点 A 或 B 开始。${degradedLine}`
-        : outcome.skipped.length
-          ? `没有新词入库：粘的 ${outcome.skipped.length} 个词头都已经在词库里了。`
-          : `没识别出词头，换一行一个词的写法再试一次。${degradedLine}`;
-      if (outcome.added.length) {
-        selected = outcome.added.slice(0, MAX_TARGET_WORDS).map((word) => word.id);
-        intakeRaw = '';
-      }
-      busy = null;
-      onMasteryChanged();
-      render();
+    bankRoot.querySelectorAll<HTMLButtonElement>('#open-words').forEach((btn) => {
+      btn.addEventListener('click', () => onOpenWords());
     });
   }
 
@@ -841,8 +756,8 @@ export function mountWritingPanel(
       resetOutput();
       render();
       // 换词后这个按钮本身就消失了，把键盘焦点送到下一步要操作的地方。
-      (bankRoot.querySelector<HTMLButtonElement>('.word') ??
-        bankRoot.querySelector<HTMLButtonElement>('#intake-toggle'))?.focus();
+      (bankRoot.querySelector<HTMLButtonElement>('.pick') ??
+        bankRoot.querySelector<HTMLButtonElement>('#open-words'))?.focus();
     });
 
     const draft = deskRoot.querySelector<HTMLTextAreaElement>('#draft');
@@ -957,7 +872,7 @@ export function mountWritingPanel(
     const caret =
       focused instanceof HTMLTextAreaElement ? focused.selectionStart : (refocus?.caret ?? null);
     const words = loadWords();
-    renderBank(words);
+    renderPick(words);
     renderDesk(words);
     popover.reanchor();
     refocus = null;
@@ -975,5 +890,11 @@ export function mountWritingPanel(
   }
 
   render();
-  return { redraw: render };
+  return {
+    redraw: render,
+    selectWords: (ids) => {
+      selected = ids.slice(0, MAX_TARGET_WORDS);
+      render();
+    },
+  };
 }

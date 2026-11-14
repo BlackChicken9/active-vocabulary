@@ -29,10 +29,10 @@ app.innerHTML = `
   <nav class="viewnav" aria-label="视图切换">
     <div class="viewnav__in seg" role="group" aria-label="写作与词本">
       <button type="button" class="seg-btn" data-view="write" aria-pressed="true">
-        <strong>写作</strong><small>读示范 · 自己写</small>
+        <strong>写作</strong><small>按词出题 · 逐句点评</small>
       </button>
       <button type="button" class="seg-btn" data-view="words" aria-pressed="false">
-        <strong>词本</strong><small>学搭配 · 补例句</small>
+        <strong>词本</strong><small>粘笔记收词 · 学搭配</small>
       </button>
     </div>
   </nav>
@@ -95,13 +95,27 @@ const writing = mountWritingPanel(
   document.querySelector<HTMLElement>('#bank')!,
   document.querySelector<HTMLElement>('#desk')!,
   renderTally,
+  () => go('words'),
 );
 let words: WordsPanel | null = null;
 
-/** 进哪个视图就重算哪个视图：词本里补的搭配、写作页里粘的新词，切过去都是最新的。 */
+/** 页内锚点用 #desk / #words-panel，视图 hash 必须带 / 前缀才不撞车。 */
+const HASH: Record<View, string> = { write: '#/write', words: '#/words' };
+
+function viewFromHash(): View {
+  return location.hash === HASH.words ? 'words' : 'write';
+}
+
+/** 进哪个视图就重算哪个视图：词本里补的搭配、写作页里勾的目标词，切过去都是最新的。 */
 function showView(view: View): void {
   if (view === 'words') {
-    words = words ?? mountWordsPanel(wordsRoot, renderTally);
+    words =
+      words ??
+      mountWordsPanel(wordsRoot, {
+        onChanged: renderTally,
+        onGoWrite: () => go('write'),
+        onWordsAdded: (ids) => writing.selectWords(ids),
+      });
     words.redraw();
   } else {
     writing.redraw();
@@ -113,8 +127,19 @@ function showView(view: View): void {
   }
   skip.setAttribute('href', view === 'write' ? '#desk' : '#words-panel');
   skip.textContent = view === 'write' ? '跳到写作区' : '跳到词本';
+  if (location.hash !== HASH[view]) location.hash = HASH[view];
+}
+
+/** 换屏的唯一入口：改 hash，剩下的交给 hashchange，浏览器后退键因此能退回上一屏。 */
+function go(view: View): void {
+  if (location.hash === HASH[view]) showView(view);
+  else location.hash = HASH[view];
 }
 
 for (const button of viewButtons) {
-  button.addEventListener('click', () => showView(button.dataset.view as View));
+  button.addEventListener('click', () => go(button.dataset.view as View));
 }
+
+window.addEventListener('hashchange', () => showView(viewFromHash()));
+
+showView(viewFromHash());
