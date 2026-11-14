@@ -135,8 +135,8 @@ function sentenceBody(
 
 export interface WritingPanel {
   redraw: () => void;
-  /** 词本刚收进来的新词直接当这次的目标词，省得回写作页再勾一遍。 */
-  selectWords: (ids: string[]) => void;
+  /** 词本刚收的新词补进本次目标词；已选满时把没放进去的 id 原样返回，由调用方如实提示。 */
+  selectWords: (ids: string[]) => string[];
 }
 
 export function mountWritingPanel(
@@ -340,12 +340,14 @@ export function mountWritingPanel(
   function wordPick(word: Word): string {
     const on = selected.includes(word.id);
     const disabled = busy !== null || (selected.length >= MAX_TARGET_WORDS && !on);
+    const meaning = word.meaningZh.trim();
     return `
       <button type="button" class="pick" id="w-${word.id}" data-id="${word.id}"
-        aria-pressed="${on}" aria-label="${escapeHtml(word.headword)}，${masteryZh[word.mastery]}" ${
-        disabled ? 'disabled' : ''
-      }>
-        <i class="dot ${word.mastery}" aria-hidden="true"></i>${escapeHtml(word.headword)}
+        aria-pressed="${on}" ${disabled ? 'disabled' : ''}>
+        <i class="dot ${word.mastery}" aria-hidden="true"></i>
+        <span class="pick__hw">${escapeHtml(word.headword)}</span>
+        <span class="pick__zh${meaning ? '' : ' empty'}">${escapeHtml(meaning || '释义待补')}</span>
+        <span class="sr-only">${masteryZh[word.mastery]}</span>
       </button>`;
   }
 
@@ -355,7 +357,7 @@ export function mountWritingPanel(
         <h2 id="bank-h">本次目标词</h2>
         <span class="bank__count">词本 ${words.length} 词</span>
       </div>
-      <p class="sub">点词头勾上，${MIN_TARGET_WORDS}~${MAX_TARGET_WORDS} 个；右边按这批词出题。</p>
+      <p class="sub">点词卡勾上，${MIN_TARGET_WORDS}~${MAX_TARGET_WORDS} 个；右边按这批词出题。</p>
       ${
         words.length
           ? `<div class="pickrow">${words.map(wordPick).join('')}</div>
@@ -893,8 +895,16 @@ export function mountWritingPanel(
   return {
     redraw: render,
     selectWords: (ids) => {
-      selected = ids.slice(0, MAX_TARGET_WORDS);
+      const next = [...selected];
+      const overflow: string[] = [];
+      for (const id of ids) {
+        if (next.includes(id)) continue;
+        if (next.length >= MAX_TARGET_WORDS) overflow.push(id);
+        else next.push(id);
+      }
+      selected = next;
       render();
+      return overflow;
     },
   };
 }

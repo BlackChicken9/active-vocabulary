@@ -101,13 +101,19 @@ let words: WordsPanel | null = null;
 
 /** 页内锚点用 #desk / #words-panel，视图 hash 必须带 / 前缀才不撞车。 */
 const HASH: Record<View, string> = { write: '#/write', words: '#/words' };
+let current: View = 'write';
 
-function viewFromHash(): View {
-  return location.hash === HASH.words ? 'words' : 'write';
+/** 认不出来的 hash 是页内锚点（#desk / #words-panel），不是路由：交给调用方留在当前屏。 */
+function viewFromHash(): View | null {
+  for (const view of Object.keys(HASH) as View[]) {
+    if (location.hash === HASH[view]) return view;
+  }
+  return null;
 }
 
 /** 进哪个视图就重算哪个视图：词本里补的搭配、写作页里勾的目标词，切过去都是最新的。 */
 function showView(view: View): void {
+  current = view;
   if (view === 'words') {
     words =
       words ??
@@ -127,7 +133,6 @@ function showView(view: View): void {
   }
   skip.setAttribute('href', view === 'write' ? '#desk' : '#words-panel');
   skip.textContent = view === 'write' ? '跳到写作区' : '跳到词本';
-  if (location.hash !== HASH[view]) location.hash = HASH[view];
 }
 
 /** 换屏的唯一入口：改 hash，剩下的交给 hashchange，浏览器后退键因此能退回上一屏。 */
@@ -140,6 +145,6 @@ for (const button of viewButtons) {
   button.addEventListener('click', () => go(button.dataset.view as View));
 }
 
-window.addEventListener('hashchange', () => showView(viewFromHash()));
+window.addEventListener('hashchange', () => showView(viewFromHash() ?? current));
 
-showView(viewFromHash());
+showView(viewFromHash() ?? 'write');

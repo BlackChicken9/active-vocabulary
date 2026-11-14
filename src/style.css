@@ -292,6 +292,19 @@ html .card {
   top: 14px;
 }
 
+/* 只给读屏机的状态文字：界面上用色点表掌握度，这里补一份不靠颜色的说法。 */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
@@ -648,8 +661,8 @@ textarea:focus {
 }
 
 .pickrow {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
   align-content: flex-start;
   gap: var(--s-2);
   max-height: min(46svh, 420px);
@@ -659,6 +672,7 @@ textarea:focus {
 }
 
 .pickrow.empty {
+  display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: var(--s-3);
@@ -667,17 +681,20 @@ textarea:focus {
 }
 
 .pick {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  height: var(--btn-h-sm);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  column-gap: 7px;
+  row-gap: 1px;
+  min-height: var(--btn-h-sm);
   max-width: 100%;
-  padding: 0 var(--s-4);
+  padding: var(--s-2) var(--s-3);
   border: 1px solid var(--line);
-  border-radius: var(--r-btn);
+  border-radius: var(--r-md);
   background: color-mix(in oklab, var(--ink) 4%, transparent);
   color: var(--muted);
-  font: 500 var(--t-small) / 1 var(--font-text);
+  font: 500 var(--t-small) / 1.35 var(--font-text);
+  text-align: left;
   cursor: pointer;
   transition:
     background-color 120ms var(--ease),
@@ -688,6 +705,29 @@ textarea:focus {
 .pick .dot {
   width: 7px;
   height: 7px;
+}
+
+.pick__hw {
+  color: var(--ink);
+  font-size: var(--t-body);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pick__zh {
+  grid-column: 2;
+  font-size: var(--t-label);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pick__zh.empty {
+  /* 不压暗：用斜体区分「还没释义」，和词卡列表同一套写法。 */
+  color: var(--muted);
+  font-style: italic;
 }
 
 .pick[aria-pressed='true'] {
@@ -1747,8 +1787,9 @@ textarea:focus {
 
 .wb__head {
   display: flex;
-  flex-direction: column;
-  gap: var(--s-1);
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
 }
 
 .wpanel-body {

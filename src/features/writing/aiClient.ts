@@ -50,16 +50,34 @@ function targets(task: WritingTask, words: Word[]) {
     }));
 }
 
-async function post(path: string, payload: unknown): Promise<unknown> {
-  return requestJson(
-    `/functions/v1/app/${path}`,
-    {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(payload),
-    },
-    FALLBACK_MESSAGES,
+/**
+ * 生成类请求一次只跑一路：两屏各持自己的忙标记，互相不知道对方在不在调用，
+ * 排队比让它们同时打到上游稳——后来的请求等前面那条落地，界面照常转圈。
+ */
+let lane: Promise<unknown> = Promise.resolve();
+
+function queue<T>(call: () => Promise<T>): Promise<T> {
+  const run = lane.then(call, call);
+  lane = run.then(
+    () => undefined,
+    () => undefined,
   );
+  return run;
+}
+
+async function post(path: string, payload: unknown): Promise<unknown> {
+  const call = () =>
+    requestJson(
+      `/functions/v1/app/${path}`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      },
+      FALLBACK_MESSAGES,
+    );
+  // 点词查释义短而即时，别排在生成类请求后面；其余长请求一次只跑一路。
+  return path === 'gloss' ? call() : queue(call);
 }
 
 function readFeedback(value: unknown, task: WritingTask, submission: Submission): Feedback {

@@ -14,8 +14,8 @@ export interface WordsPanel {
 export interface WordsPanelOptions {
   /** 词库或掌握度变了，让外壳重算顶部统计。 */
   onChanged?: () => void;
-  /** 粘贴收词成功后把新词交给写作页当目标词。 */
-  onWordsAdded?: (ids: string[]) => void;
+  /** 粘贴收词成功后把新词交给写作页当目标词，返回没被勾上的 id（本次目标词已选满）。 */
+  onWordsAdded?: (ids: string[]) => string[];
   /** 「去写作」按钮：由外壳负责切屏。 */
   onGoWrite?: () => void;
 }
@@ -160,6 +160,10 @@ export function mountWordsPanel(root: HTMLElement, options: WordsPanelOptions = 
       draw();
       const outcome = await importWords(intakeRaw);
       intakeBusy = false;
+      const overflow = outcome.added.length
+        ? options.onWordsAdded?.(outcome.added.map((word) => word.id)) ?? []
+        : [];
+      if (outcome.added.length) intakeRaw = '';
       const names = outcome.added
         .slice(0, 6)
         .map((word) => escapeHtml(word.headword))
@@ -168,16 +172,20 @@ export function mountWordsPanel(root: HTMLElement, options: WordsPanelOptions = 
         ? `；跳过 ${outcome.skipped.length} 个已在词库里的词`
         : '';
       const degradedLine = outcome.degraded ? `<br>兜底原因：${escapeHtml(outcome.degraded)}` : '';
+      const overflowLine = overflow.length
+        ? `；${escapeHtml(
+            overflow
+              .map((id) => outcome.added.find((word) => word.id === id)?.headword ?? '')
+              .filter(Boolean)
+              .join('、'),
+          )} 没勾上，本次目标词已满，到写作页换一下`
+        : '，已替你勾成这次的目标词';
       intakeJump = outcome.added.length > 0;
       intakeNote = outcome.added.length
-        ? `已加入 ${outcome.added.length} 个词：${names}${outcome.added.length > 6 ? ' 等' : ''}${skippedLine}，已经替你勾成这次的目标词。${degradedLine}`
+        ? `已加入 ${outcome.added.length} 个词：${names}${outcome.added.length > 6 ? ' 等' : ''}${skippedLine}${overflowLine}。${degradedLine}`
         : outcome.skipped.length
           ? `没有新词入库：粘的 ${outcome.skipped.length} 个词头都已经在词本里了。`
           : `没识别出词头，换一行一个词的写法再试一次。${degradedLine}`;
-      if (outcome.added.length) {
-        options.onWordsAdded?.(outcome.added.map((word) => word.id));
-        intakeRaw = '';
-      }
       options.onChanged?.();
       draw();
     });
