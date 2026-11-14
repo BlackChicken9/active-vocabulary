@@ -22,10 +22,9 @@ export interface WordsPanelOptions {
 
 function wordCardHtml(word: Word): string {
   const coll = word.collocations
-    .slice(0, 2)
+    .slice(0, 3)
     .map((c) => escapeHtml(c.phrase))
     .join(' · ');
-  const example = word.examples[0] ?? '';
   return `
     <li>
       <button class="wcard ${word.mastery}" type="button" data-word="${escapeHtml(word.id)}">
@@ -38,7 +37,6 @@ function wordCardHtml(word: Word): string {
           word.meaningZh ? escapeHtml(word.meaningZh) : '释义待补'
         }</span>
         ${coll ? `<span class="wcard-coll">搭配：${coll}</span>` : '<span class="wcard-coll">还没有搭配</span>'}
-        ${example ? `<span class="wcard-example">${escapeHtml(example)}</span>` : ''}
       </button>
     </li>`;
 }
@@ -80,10 +78,13 @@ export function mountWordsPanel(root: HTMLElement, options: WordsPanelOptions = 
   let intakeBusy = false;
   let manualOpen = false;
   let flash = '';
+  /** null = 还没点过：词本空着时默认摊开粘贴框走首屏闭环，已有词时收成一行。 */
+  let intakeOpen: boolean | null = null;
 
   function draw(): void {
     const words = loadWords();
     const opened = openWordId ? words.find((w) => w.id === openWordId) : undefined;
+    const showIntake = intakeOpen ?? words.length === 0;
 
     root.innerHTML = `
       <div class="wb__head">
@@ -107,8 +108,26 @@ export function mountWordsPanel(root: HTMLElement, options: WordsPanelOptions = 
 
     body.innerHTML = `
       <div class="intake">
+        <div class="wbar">
+          <button type="button" class="btn btn--sm btn--secondary" id="intake-toggle" aria-expanded="${showIntake}">${
+            showIntake ? '收起收词框' : '粘贴收词'
+          }</button>
+          <button type="button" class="btn btn--sm btn--secondary" id="manual-toggle" aria-expanded="${manualOpen}">${
+            manualOpen ? '收起手动填词' : '手动填一个'
+          }</button>
+          ${
+            intakeNote
+              ? `<p class="wstatus">${intakeNote}${
+                  intakeJump ? '<button type="button" class="wlink" id="go-write">去写作</button>' : ''
+                }</p>`
+              : ''
+          }
+        </div>
+        ${
+          showIntake
+            ? `
         <label class="hint" for="intake-raw">一串单词、一段带释义的笔记都行，不用管格式</label>
-        <textarea id="intake-raw" rows="4" placeholder="直接粘贴，AI 会整理成词卡…">${escapeHtml(intakeRaw)}</textarea>
+        <textarea id="intake-raw" rows="3" placeholder="直接粘贴，AI 会整理成词卡…">${escapeHtml(intakeRaw)}</textarea>
         <div class="intake__bar">
           <button type="button" class="btn btn--primary btn--sm" id="intake-run" ${
             intakeBusy || !intakeRaw.trim() ? 'disabled' : ''
@@ -117,31 +136,25 @@ export function mountWordsPanel(root: HTMLElement, options: WordsPanelOptions = 
             intakeBusy ? 'disabled' : ''
           }>试试粘这段</button>
           <span class="hint">一次最多 30 条，已在词库的词头会跳过</span>
-        </div>
-        ${
-          intakeNote
-            ? `<div class="intake__bar"><p class="engine">${intakeNote}</p>${
-                intakeJump
-                  ? '<button type="button" class="btn btn--secondary btn--sm" id="go-write">去写作</button>'
-                  : ''
-              }</div>`
+        </div>`
             : ''
         }
-      </div>
-      <div class="wcollect-bar">
-        <button type="button" class="btn btn--sm btn--secondary" id="manual-toggle" aria-expanded="${manualOpen}">${
-          manualOpen ? '收起手动填词' : '手动填一个'
-        }</button>
       </div>
       ${manualOpen ? '<div class="wform-host"></div>' : ''}
       ${flash ? `<p class="wnote">${escapeHtml(flash)}</p>` : ''}
       <div class="wlist-host"></div>`;
 
-    const rawBox = body.querySelector<HTMLTextAreaElement>('#intake-raw')!;
-    rawBox.addEventListener('input', () => {
+    const rawBox = body.querySelector<HTMLTextAreaElement>('#intake-raw');
+    rawBox?.addEventListener('input', () => {
       intakeRaw = rawBox.value;
       const run = body.querySelector<HTMLButtonElement>('#intake-run');
       if (run) run.disabled = intakeBusy || !intakeRaw.trim();
+    });
+
+    body.querySelector<HTMLButtonElement>('#intake-toggle')?.addEventListener('click', () => {
+      intakeOpen = !showIntake;
+      draw();
+      if (intakeOpen) root.querySelector<HTMLTextAreaElement>('#intake-raw')?.focus();
     });
 
     body.querySelector<HTMLButtonElement>('#intake-sample')?.addEventListener('click', () => {
@@ -164,25 +177,22 @@ export function mountWordsPanel(root: HTMLElement, options: WordsPanelOptions = 
         ? options.onWordsAdded?.(outcome.added.map((word) => word.id)) ?? []
         : [];
       if (outcome.added.length) intakeRaw = '';
-      const names = outcome.added
-        .slice(0, 6)
-        .map((word) => escapeHtml(word.headword))
-        .join('、');
+      const headwords = (ids: string[]) => {
+        const names = outcome.added
+          .filter((word) => ids.includes(word.id))
+          .map((word) => escapeHtml(word.headword));
+        return names.length > 3 ? `${names.slice(0, 3).join('、')} 等` : names.join('、');
+      };
       const skippedLine = outcome.skipped.length
-        ? `；跳过 ${outcome.skipped.length} 个已在词库里的词`
+        ? `，跳过 ${outcome.skipped.length} 个已在词库`
         : '';
       const degradedLine = outcome.degraded ? `<br>兜底原因：${escapeHtml(outcome.degraded)}` : '';
-      const overflowLine = overflow.length
-        ? `；${escapeHtml(
-            overflow
-              .map((id) => outcome.added.find((word) => word.id === id)?.headword ?? '')
-              .filter(Boolean)
-              .join('、'),
-          )} 没勾上，本次目标词已满，到写作页换一下`
-        : '，已替你勾成这次的目标词';
+      const pickLine = overflow.length
+        ? `，${headwords(overflow)} 没勾上（目标词已满）`
+        : '，已勾成这次的目标词';
       intakeJump = outcome.added.length > 0;
       intakeNote = outcome.added.length
-        ? `已加入 ${outcome.added.length} 个词：${names}${outcome.added.length > 6 ? ' 等' : ''}${skippedLine}${overflowLine}。${degradedLine}`
+        ? `已加入 ${outcome.added.length} 个词${skippedLine}${pickLine}。${degradedLine}`
         : outcome.skipped.length
           ? `没有新词入库：粘的 ${outcome.skipped.length} 个词头都已经在词本里了。`
           : `没识别出词头，换一行一个词的写法再试一次。${degradedLine}`;
