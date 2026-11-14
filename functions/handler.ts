@@ -23,11 +23,54 @@ const MAX_EXPLAIN_SENTENCES = 12;
 const MODEL_KEY_HEADER = 'x-model-key';
 const MODEL_KEY_OK = /^[A-Za-z0-9_\-.]{8,200}$/;
 
+/** 站点密钥的免费示范：数到 5 次就要访客自己的 key。 */
+const TRIAL_LIMIT = 5;
+const TRIAL_COOKIE = 'av_trial';
+const TRIAL_MAX_AGE = 31_536_000;
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'content-type': 'application/json; charset=utf-8' },
   });
+}
+
+/** HMAC 用的站点 key 只参与签名，绝不出现在 cookie、响应或日志里。 */
+async function hmac(value: string, key: string): Promise<string> {
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(key),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const mac = await crypto.subtle.sign('HMAC', cryptoKey, new TextEncoder().encode(value));
+  return btoa(String.fromCharCode(...new Uint8Array(mac)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+function trialCookieValue(header: string | null): string {
+  for (const piece of (header ?? '').split(';')) {
+    const [name, ...rest] = piece.trim().split('=');
+    if (name === TRIAL_COOKIE) return rest.join('=');
+  }
+  return '';
+}
+
+/** cookie 只认「数字.签名」这一种形状；脏值当没用，因为伪造最多也只能回到 0 次。 */
+async function trialUsed(request: Request, key: string): Promise<number> {
+  const raw = trialCookieValue(request.headers.get('cookie'));
+  const [count, signature] = raw.split('.');
+  if (!/^\d{1,3}$/.test(count ?? '') || !signature) return 0;
+  if (await hmac(`${TRIAL_COOKIE}:${count}`, key) !== signature) return 0;
+  return Number(count);
+}
+
+async function trialCookie(used: number, key: string): Promise<string> {
+  const signature = await hmac(`${TRIAL_COOKIE}:${used}`, key);
+  return `${TRIAL_COOKIE}=${used}.${signature}; Path=/; Max-Age=${TRIAL_MAX_AGE}; HttpOnly; SameSite=Lax`;
 }
 
 function clip(value: string, max: number): string {
@@ -480,6 +523,14 @@ export function createHandler(env: GatewayEnv = {}) {
       }
     }
 
+    // 免费示范数的是站点的钱；自带 key 的访客花自己的额度，不占这道闸。
+    // 用 429 不用 403：前端把 401/403 一律当「没权限」，那会盖掉「额度用完」这句实话。
+    const counted = path === 'model-text' && !fromUserKey;
+    const used = counted ? await trialUsed(request, apiKey) : 0;
+    if (counted && used >= TRIAL_LIMIT) {
+      return json({ ok: false, error: 'trial_exceeded' }, 429);
+    }
+
     const words = parseWords(body.words);
     if (!words) return json({ ok: false, error: 'invalid_request' }, 400);
 
@@ -488,7 +539,15 @@ export function createHandler(env: GatewayEnv = {}) {
         const prompt = asString(body.prompt, 600) ?? '';
         const length = parseLength(body.length, words.length);
         const { data, model } = await chat(cfg, modelTextPrompt(words, length), `题干：${prompt}`);
-        return json({ ok: true, model, modelText: normalizeModelText(data, words) });
+        // 只有这次真生成出来才算用掉一次：上游失败不该扣掉访客的机会。
+        const response = json({
+          ok: true,
+          model,
+          modelText: normalizeModelText(data, words),
+          trialLeft: counted ? TRIAL_LIMIT - used - 1 : null,
+        });
+        if (counted) response.headers.append('set-cookie', await trialCookie(used + 1, apiKey));
+        return response;
       }
 
       const text = asString(body.text, MAX_TEXT) ?? '';

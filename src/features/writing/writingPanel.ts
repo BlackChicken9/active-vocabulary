@@ -169,6 +169,8 @@ export function mountWritingPanel(
   let explainEngine: string | null = null;
   // 网关会把这次实际用的型号带回来；一路网关一个模型，界面就显示这一个。
   let gatewayModel: string | null = null;
+  // 站点密钥的免费示范还剩几次；走自带密钥时是 null，那笔账不在本站身上。
+  let trialLeft: number | null = null;
   let passageView: 'whole' | 'sentences' = 'whole';
   let closedNotes = new Set<number>();
   let notePending = new Set<number>();
@@ -313,7 +315,9 @@ export function mountWritingPanel(
     return `<p class="engine">${
       source
         ? `兜底原因：${escapeHtml(source)}`
-        : `来源：AI 网关${gatewayModel ? ` · ${escapeHtml(gatewayModel)}` : ''}`
+        : `来源：AI 网关${gatewayModel ? ` · ${escapeHtml(gatewayModel)}` : ''}${
+            trialLeft === null ? '' : ` · 免费示范剩 ${trialLeft} 次`
+          }`
     }</p>`;
   }
 
@@ -906,6 +910,7 @@ export function mountWritingPanel(
       passageView = 'whole';
       modelEngine = result.degraded;
       gatewayModel = result.model;
+      trialLeft = result.trialLeft ?? null;
       trained = markTraining(result.data.wordIds);
       busy = null;
       onMasteryChanged();
