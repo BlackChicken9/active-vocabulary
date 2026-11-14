@@ -1,4 +1,5 @@
 import type { Explanation, Feedback, Word } from '../../types';
+import { splitSentences } from './passage';
 
 const STORAGE_KEY = 'tianchi.saved';
 const MAX_SAVED = 50;
@@ -24,7 +25,6 @@ export interface SavedTarget {
 export interface SavedPassage {
   id: string;
   kind: SavedKind;
-  title: string;
   lengthLabel: string;
   text: string;
   /** 示范带的整段译文；自己写的那篇没有。 */
@@ -96,6 +96,19 @@ export function hasSaved(kind: SavedKind, text: string): boolean {
   return loadSaved().some((saved) => saved.kind === kind && saved.text === text);
 }
 
+/** 名字不另存一份：直接从正文开头取，正文没变名字就不会跟内容对不上，旧数据也一并有标题。 */
+const NAME_WORDS = 7;
+const NAME_CHARS = 56;
+
+export function passageName(item: SavedPassage): string {
+  const first = splitSentences(item.text)[0] ?? '';
+  const words = first.split(' ');
+  // 取满一截才去掉结尾标点，整句能装下的就照原样留着。
+  const cut = words.length > NAME_WORDS;
+  const head = cut ? `${words.slice(0, NAME_WORDS).join(' ').replace(/[,;:.\s]+$/, '')}…` : first;
+  return head.length > NAME_CHARS ? `${head.slice(0, NAME_CHARS).trimEnd()}…` : head;
+}
+
 /** 复制出去的要能直接贴进笔记：示范带译文与逐句讲解，习作带得分与逐词判定。 */
 export function savedClip(item: SavedPassage): string {
   if (item.kind === 'model') {
@@ -109,11 +122,11 @@ export function savedClip(item: SavedPassage): string {
           })
           .join('\n')
       : '';
-    return [item.title, item.text, item.zh, notes].filter(Boolean).join('\n\n');
+    return [passageName(item), item.text, item.zh, notes].filter(Boolean).join('\n\n');
   }
   const usages = item.usages.map((u) => `- ${u.headword}（${u.tag}）：${u.note}`).join('\n');
   return [
-    item.title,
+    passageName(item),
     item.text,
     `用词得分 ${item.accuracy ?? 0}/100 · ${item.overall}`,
     usages,
@@ -143,4 +156,11 @@ export function savedTerms(words: Word[], ids: string[]): SavedTarget[] {
   return words
     .filter((word) => ids.includes(word.id))
     .map((word) => ({ headword: word.headword, meaningZh: word.meaningZh.trim() }));
+}
+
+/** 早期存下的那几篇没有 terms，退一步用逐词判定的词头，列表里至少看得见当时选了哪些词。 */
+export function savedWords(item: SavedPassage): SavedTarget[] {
+  return item.terms.length
+    ? item.terms
+    : item.usages.map((usage) => ({ headword: usage.headword, meaningZh: '' }));
 }

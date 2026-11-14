@@ -855,7 +855,6 @@ export function mountWritingPanel(
             explain && explain.sentences.some((note) => note.zh || note.structure) ? explain : null;
           addSaved({
             kind,
-            title: active.title,
             lengthLabel: lengthLine(modelLength ?? taskLength(active)),
             text: model.text,
             zh: joinedTranslation(explain?.sentences ?? []),
@@ -868,7 +867,6 @@ export function mountWritingPanel(
         } else if (kind === 'mine' && feedback) {
           addSaved({
             kind,
-            title: active.title,
             lengthLabel: lengthLine(taskLength(active)),
             text: feedback.submittedText,
             zh: '',

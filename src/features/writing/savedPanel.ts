@@ -4,8 +4,10 @@ import { requestExplainTerms } from './aiClient';
 import { roleClass, segmentSentence } from './passage';
 import {
   loadSaved,
+  passageName,
   removeSaved,
   savedClip,
+  savedWords,
   setSavedExplanation,
   type SavedPassage,
 } from './savedStore';
@@ -116,6 +118,21 @@ function body(item: SavedPassage): string {
     ${notes(item)}`;
 }
 
+/** 当时勾选的目标词贴在标题下面一行：不打开这篇也知道它是围着哪几个词写的。 */
+function terms(item: SavedPassage): string {
+  const list = savedWords(item);
+  if (!list.length) return '';
+  const chips = list
+    .map((word) => {
+      const gloss = word.meaningZh.length > 18 ? `${word.meaningZh.slice(0, 18)}…` : word.meaningZh;
+      return `<span class="saved__term"><b>${escapeHtml(word.headword)}</b>${
+        gloss ? `<span>${escapeHtml(gloss)}</span>` : ''
+      }</span>`;
+    })
+    .join('');
+  return `<div class="saved__terms"><span class="targets__label">目标词 ${list.length} 个</span>${chips}</div>`;
+}
+
 function row(item: SavedPassage): string {
   const open = rowOpen === item.id;
   const confirming = confirmId === item.id;
@@ -126,7 +143,7 @@ function row(item: SavedPassage): string {
     <li class="saved__item" id="saved-${item.id}">
       <div class="saved__top">
         <span class="badge">${item.kind === 'model' ? 'AI 示范' : '我的习作'}</span>
-        <span class="saved__title">${escapeHtml(item.title)}</span>
+        <span class="saved__title">${escapeHtml(passageName(item))}</span>
         <span class="saved__meta">${escapeHtml(item.lengthLabel)} · ${day(item.savedAt)}${
           item.explanation ? ' · 已带讲解' : ''
         }</span>
@@ -144,6 +161,7 @@ function row(item: SavedPassage): string {
           confirming ? 'data-confirm="1"' : ''
         }>${confirming ? '确认删除' : '删除'}</button>
       </div>
+      ${terms(item)}
       ${failed ? `<p class="hint warn">补分析没走成：${escapeHtml(failed)}。再点一次「补分析」。</p>` : ''}
       <div class="saved__body" id="saved-body-${item.id}" ${open ? '' : 'hidden'}>${open ? body(item) : ''}</div>
     </li>`;

@@ -1848,6 +1848,35 @@ textarea:focus {
   font-family: var(--font-mono);
 }
 
+/* 列表行里的目标词：静态标签，不能长得像写作屏那颗可以点的 .target。 */
+.saved__terms {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 0 0 var(--s-3);
+}
+
+.saved__term {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-btn);
+  background: color-mix(in oklab, var(--ink) 5%, transparent);
+  font-size: var(--t-label);
+  line-height: 1.5;
+}
+
+.saved__term b {
+  font-weight: 500;
+}
+
+.saved__term span {
+  color: var(--muted);
+}
+
 .saved__body {
   padding: 0 0 var(--s-4);
 }
