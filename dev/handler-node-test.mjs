@@ -21,7 +21,10 @@ function stubUpstream(payload, init = {}) {
       });
     }
     return new Response(
-      JSON.stringify({ choices: [{ message: { content: typeof payload === 'string' ? payload : JSON.stringify(payload) } }] }),
+      JSON.stringify({
+        ...(init.model ? { model: init.model } : {}),
+        choices: [{ message: { content: typeof payload === 'string' ? payload : JSON.stringify(payload) } }],
+      }),
       { status: 200, headers: { 'content-type': 'application/json' } },
     );
   };
@@ -316,4 +319,39 @@ const siteKeyRejected = await configured(post('model-text', { words: WORDS, prom
 assert.equal(siteKeyRejected.status, 502);
 assert.deepEqual(JSON.parse(await siteKeyRejected.text()), { ok: false, error: 'upstream_unavailable' });
 
-console.log('functions/handler.ts 全部 20 组断言通过');
+// 21. 型号回显：界面要能说明这次实际调的是哪个模型，而不是笼统一句「走了 AI 网关」。
+stubUpstream({ text: 'Phones are ubiquitous.', wordIds: ['alleviate'] });
+const defaultModel = JSON.parse(
+  await (await configured(post('model-text', { words: WORDS, prompt: 'x' }))).text(),
+);
+assert.equal(defaultModel.model, 'deepseek-chat');
+
+// AI_MODEL 换了服务商，回显跟着配置走。
+const switched = createHandler({ LLM_API_KEY: 'sk-test', AI_MODEL: 'qwen3-max' });
+const switchedModel = JSON.parse(
+  await (await switched(post('model-text', { words: WORDS, prompt: 'x' }))).text(),
+);
+assert.equal(switchedModel.model, 'qwen3-max');
+
+// 上游自己报了具体版本时以它为准，界面不猜。
+stubUpstream({ text: 'Phones are ubiquitous.', wordIds: ['alleviate'] }, { model: 'deepseek-chat-v3' });
+const echoedModel = JSON.parse(
+  await (await configured(post('model-text', { words: WORDS, prompt: 'x' }))).text(),
+);
+assert.equal(echoedModel.model, 'deepseek-chat-v3');
+
+// 五路都带 model，前端每一屏都能标明这次用的型号。
+for (const [path, body, payload] of [
+  ['feedback', { words: WORDS, text: 'I alleviate stress.', taskId: 't1' }, { usages: [{ wordId: 'alleviate', used: true, natural: true, note: '搭配自然' }], accuracy: 100, overall: '不错' }],
+  ['intake', { raw: 'alleviate, leverage' }, { words: [{ headword: 'alleviate' }] }],
+  ['gloss', { term: 'alleviate', sentence: 'I alleviate stress.' }, { term: 'alleviate', pos: 'v.', meaningZh: '减轻' }],
+  ['explain', { text: 'I alleviate stress.' }, { sentences: [{ zh: '我缓解了压力。', structure: '主谓宾', marked: '[主语 I][谓语 alleviate][宾语 stress]' }], glossary: ['alleviate|v.|减轻'] }],
+  ['model-text', { words: WORDS, prompt: 'x' }, { text: 'I alleviate stress. Phones are ubiquitous.', wordIds: ['alleviate'] }],
+]) {
+  stubUpstream(payload);
+  const routed = await configured(post(path, body));
+  assert.equal(routed.status, 200);
+  assert.equal(JSON.parse(await routed.text()).model, 'deepseek-chat');
+}
+
+console.log('functions/handler.ts 全部 21 组断言通过');

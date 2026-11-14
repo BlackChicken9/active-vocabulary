@@ -58,7 +58,7 @@ export function createTask(words: Word[], targetWordIds: string[], choice: Lengt
   return task;
 }
 
-/** 任务进行中改篇幅：题干里的篇幅行跟着换，示范与点评由调用方清空。 */
+/** 任务进行中改篇幅：题干里的篇幅行跟着换；已生成的示范与点评由调用方保留，只影响下一次生成。 */
 export function applyLength(task: WritingTask, choice: LengthChoice): WritingTask {
   const length = passageSpec(choice, task.targetWordIds.length);
   const next: WritingTask = {

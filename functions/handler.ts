@@ -112,7 +112,8 @@ async function chat(
   prompt: string,
   user: string,
   options: { maxTokens?: number; timeoutMs?: number } = {},
-): Promise<unknown> {
+): Promise<{ data: unknown; model: string }> {
+  const model = env.AI_MODEL || DEFAULT_MODEL;
   const response = await fetch(`${env.AI_BASE_URL ?? DEFAULT_BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -122,7 +123,7 @@ async function chat(
       'user-agent': 'active-vocab-sites/1.0 (Windows)',
     },
     body: JSON.stringify({
-      model: env.AI_MODEL || DEFAULT_MODEL,
+      model,
       temperature: 0.2,
       // 单次生成默认最多 4096 token，讲解那一路另给更低的封顶。
       max_tokens: options.maxTokens ?? 4096,
@@ -135,10 +136,17 @@ async function chat(
     signal: AbortSignal.timeout(options.timeoutMs ?? 20_000),
   });
   if (!response.ok) throw new Error(`upstream_${response.status}`);
-  const payload = (await response.json()) as { choices?: { message?: { content?: string } }[] };
+  const payload = (await response.json()) as {
+    model?: string;
+    choices?: { message?: { content?: string } }[];
+  };
   const content = payload.choices?.[0]?.message?.content;
   if (typeof content !== 'string') throw new Error('upstream_empty');
-  return JSON.parse(content.replace(/^\s*```(?:json)?\s*|\s*```\s*$/g, ''));
+  return {
+    // 上游自己报了型号就用它（换服务商时可能被改名），否则用我们请求的那个。
+    model: typeof payload.model === 'string' && payload.model.trim() ? payload.model.trim() : model,
+    data: JSON.parse(content.replace(/^\s*```(?:json)?\s*|\s*```\s*$/g, '')),
+  };
 }
 
 function describe(words: TargetWord[]): string {
@@ -430,7 +438,8 @@ export function createHandler(env: GatewayEnv = {}) {
       const raw = asString(body.raw, MAX_RAW);
       if (!raw) return json({ ok: false, error: 'invalid_request' }, 400);
       try {
-        return json({ ok: true, ...normalizeIntake(await chat(cfg, intakePrompt(), raw)) });
+        const { data, model } = await chat(cfg, intakePrompt(), raw);
+        return json({ ok: true, model, ...normalizeIntake(data) });
       } catch (error) {
         return upstreamFailure(error, fromUserKey);
       }
@@ -441,11 +450,10 @@ export function createHandler(env: GatewayEnv = {}) {
       if (!term || !GLOSS_TERM_OK.test(term)) return json({ ok: false, error: 'invalid_request' }, 400);
       const sentence = asString(body.sentence, 600) ?? '';
       try {
-        const entry = normalizeGloss(
-          await chat(cfg, glossPrompt(), `词：${term}\n所在句子：${sentence}`, { maxTokens: 512 }),
-          term,
-        );
-        return json({ ok: true, entry });
+        const { data, model } = await chat(cfg, glossPrompt(), `词：${term}\n所在句子：${sentence}`, {
+          maxTokens: 512,
+        });
+        return json({ ok: true, model, entry: normalizeGloss(data, term) });
       } catch (error) {
         return upstreamFailure(error, fromUserKey);
       }
@@ -460,16 +468,13 @@ export function createHandler(env: GatewayEnv = {}) {
       const words = parseWords(body.words) ?? [];
       const numbered = sentences.map((sentence, index) => `${index + 1}. ${sentence}`).join('\n');
       try {
-        const explanation = normalizeExplanation(
-          // 讲解最多 12 句，按每句译文+结构+成分估 4000 token 够写完 JSON；
-          // 真被截断就整路退成本地兜底，不会拿半截译文糊弄学习者。
-          await chat(cfg, explainPrompt(words, sentences.length), numbered, {
-            maxTokens: 4_000,
-            timeoutMs: 45_000,
-          }),
-          sentences,
-        );
-        return json({ ok: true, explanation });
+        // 讲解最多 12 句，按每句译文+结构+成分估 4000 token 够写完 JSON；
+        // 真被截断就整路退成本地兜底，不会拿半截译文糊弄学习者。
+        const { data, model } = await chat(cfg, explainPrompt(words, sentences.length), numbered, {
+          maxTokens: 4_000,
+          timeoutMs: 45_000,
+        });
+        return json({ ok: true, model, explanation: normalizeExplanation(data, sentences) });
       } catch (error) {
         return upstreamFailure(error, fromUserKey);
       }
@@ -482,22 +487,14 @@ export function createHandler(env: GatewayEnv = {}) {
       if (path === 'model-text') {
         const prompt = asString(body.prompt, 600) ?? '';
         const length = parseLength(body.length, words.length);
-        const modelText = normalizeModelText(
-          await chat(cfg, modelTextPrompt(words, length), `题干：${prompt}`),
-          words,
-        );
-        return json({ ok: true, modelText });
+        const { data, model } = await chat(cfg, modelTextPrompt(words, length), `题干：${prompt}`);
+        return json({ ok: true, model, modelText: normalizeModelText(data, words) });
       }
 
       const text = asString(body.text, MAX_TEXT) ?? '';
       const taskId = asString(body.taskId, 64) ?? '';
-      const feedback = normalizeFeedback(
-        await chat(cfg, feedbackPrompt(words), `学习者写的句子：\n${text}`),
-        words,
-        text,
-        taskId,
-      );
-      return json({ ok: true, feedback });
+      const { data, model } = await chat(cfg, feedbackPrompt(words), `学习者写的句子：\n${text}`);
+      return json({ ok: true, model, feedback: normalizeFeedback(data, words, text, taskId) });
     } catch (error) {
       return upstreamFailure(error, fromUserKey);
     }

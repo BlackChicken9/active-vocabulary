@@ -1771,6 +1771,73 @@ textarea:focus {
   color: color-mix(in oklab, var(--ink) 88%, var(--card));
 }
 
+/* 习作集：存下来的示范与批改，一行一篇，打开才给正文。全部走现有 token，不另起一套配色。 */
+.saved {
+  margin-top: var(--s-4);
+}
+
+.saved__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+
+.saved__head h3 {
+  margin: 0;
+  font-size: var(--t-body);
+  font-weight: 600;
+}
+
+.saved__note {
+  flex: 1 1 220px;
+}
+
+.saved__list {
+  margin: var(--s-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.saved__item + .saved__item {
+  border-top: 1px solid var(--line);
+}
+
+.saved__top {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+  padding: var(--s-3) 0;
+}
+
+.saved__title {
+  flex: 1 1 180px;
+  min-width: 0;
+  font-size: var(--t-body);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.saved__meta {
+  color: var(--muted);
+  font-size: var(--t-label);
+  font-family: var(--font-mono);
+}
+
+.saved__body {
+  padding: 0 0 var(--s-4);
+}
+
+.saved__text {
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-sm);
+  background: color-mix(in oklab, var(--bg) 62%, var(--card));
+  font-size: var(--t-body);
+  line-height: 1.8;
+}
+
 .busy {
   display: inline-flex;
   align-items: center;

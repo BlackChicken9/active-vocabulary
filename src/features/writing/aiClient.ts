@@ -21,6 +21,8 @@ export interface AiResult<T> {
   data: T;
   /** 非 null 表示这次没走真实 LLM，前端要如实标出来。 */
   degraded: string | null;
+  /** 网关带回的实际型号；没走成 AI 时为 null。 */
+  model: string | null;
 }
 
 const FALLBACK_MESSAGES: Record<string, string> = {
@@ -40,6 +42,12 @@ function reason(error: unknown): string {
     return FALLBACK_MESSAGES[error.code] ?? `AI 网关返回 ${error.code}`;
   }
   return 'AI 网关响应不符合契约';
+}
+
+/** 网关会把这次实际用的型号带回来；没带就当作未知，界面宁可不显示也不猜。 */
+function modelOf(value: unknown): string | null {
+  const raw = (value as Record<string, unknown>)?.model;
+  return typeof raw === 'string' && raw.trim() ? raw.trim().slice(0, 64) : null;
 }
 
 function targets(task: WritingTask, words: Word[]) {
@@ -137,11 +145,12 @@ export async function requestFeedback(
       text: submission.text,
       words: targets(task, words),
     });
-    return { data: readFeedback(data, task, submission), degraded: null };
+    return { data: readFeedback(data, task, submission), degraded: null, model: modelOf(data) };
   } catch (error) {
     return {
       data: generateMockFeedback(task, submission, words),
       degraded: `${reason(error)}，已用本地 mock 点评`,
+      model: null,
     };
   }
 }
@@ -156,11 +165,12 @@ export async function requestModelText(
       words: targets(task, words),
       length: taskLength(task),
     });
-    return { data: readModelText(data), degraded: null };
+    return { data: readModelText(data), degraded: null, model: modelOf(data) };
   } catch (error) {
     return {
       data: generateModelText(task, words),
       degraded: `${reason(error)}，示范短文改由词本例句拼接`,
+      model: null,
     };
   }
 }
@@ -221,11 +231,12 @@ export async function requestExplain(
 ): Promise<AiResult<Explanation>> {
   try {
     const data = await post('explain', { text: source, words: targets(task, words) });
-    return { data: readExplanation(data, source), degraded: null };
+    return { data: readExplanation(data, source), degraded: null, model: modelOf(data) };
   } catch (error) {
     return {
       data: generateExplanation(source),
       degraded: `${reason(error)}，译文与结构暂缺`,
+      model: null,
     };
   }
 }
@@ -239,9 +250,10 @@ export async function requestGloss(term: string, sentence: string): Promise<AiRe
     return {
       data: { term: text(entry?.term, 48) || term, pos: text(entry?.pos, 16), meaningZh },
       degraded: null,
+      model: modelOf(data),
     };
   } catch (error) {
-    return { data: { term, pos: '', meaningZh: '' }, degraded: reason(error) };
+    return { data: { term, pos: '', meaningZh: '' }, degraded: reason(error), model: null };
   }
 }
 
@@ -335,11 +347,12 @@ export async function requestIntake(raw: string): Promise<AiResult<IntakeCard[]>
     const data = await post('intake', { raw });
     const cards = readIntakeCards(data);
     if (!cards.length) throw new Error('invalid_intake');
-    return { data: cards, degraded: null };
+    return { data: cards, degraded: null, model: modelOf(data) };
   } catch (error) {
     return {
       data: splitLocally(raw),
       degraded: `${reason(error)}，已本地切出词头，释义与例句留空`,
+      model: null,
     };
   }
 }
