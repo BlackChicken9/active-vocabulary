@@ -17,12 +17,24 @@ export interface Word {
   updatedAt: string;
 }
 
+export type LengthChoice = 'auto' | 'short' | 'medium' | 'long';
+
+/** 示范短文与自写共用同一篇幅区间：句数和词数都要落在里面。 */
+export interface PassageLength {
+  minSentences: number;
+  maxSentences: number;
+  minWords: number;
+  maxWords: number;
+}
+
 export interface WritingTask {
   id: string;
   title: string;
   prompt: string;
   targetWordIds: string[];
   status: 'drafting' | 'submitted' | 'reviewed';
+  /** 旧版本存下的任务没有这个字段，读取一律走 taskLength() 兜底。 */
+  length?: PassageLength;
 }
 
 export interface Submission {

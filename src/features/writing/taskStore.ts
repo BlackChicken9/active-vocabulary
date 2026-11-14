@@ -1,41 +1,33 @@
-import type { Word, WritingTask } from '../../types';
+import type { LengthChoice, PassageLength, Word, WritingTask } from '../../types';
+import { lengthLine, passageSpec } from './passageLength';
 
 const STORAGE_KEY = 'tianchi.tasks';
 
 export const MIN_TARGET_WORDS = 2;
 export const MAX_TARGET_WORDS = 5;
 
-interface Topic {
-  title: string;
-  scenario: string;
+function lengthPrompt(count: number, spec: PassageLength): string {
+  return `篇幅：写 ${lengthLine(spec)}，${count} 个目标词都要用出来。`;
 }
 
-const topics: Topic[] = [
-  {
-    title: '周记：如何应对压力',
-    scenario: '向朋友说明你在考试周缓解压力的做法，以及这些做法为什么有效。',
-  },
-  {
-    title: '观点短文：团队里的分歧',
-    scenario: '描述一次和队友意见不合的经历，说明你最后怎么处理、结果如何。',
-  },
-  {
-    title: '申请信：为什么参加这个比赛',
-    scenario: '写一段英文申请理由，说明你的动机、能投入的时间以及你想验证的东西。',
-  },
-  {
-    title: '邮件：向老师申请延期',
-    scenario: '礼貌地说明遇到的情况，给出补救方案，并请求一个新的提交时间。',
-  },
-  {
-    title: '读书笔记：一句话评论',
-    scenario: '介绍最近读到的一个观点，解释它为什么值得记住以及你打算怎么用。',
-  },
-];
+/** 主题 = source 里「·」后面的部分（「Day 1 · 海洋与环境」「粘贴导入 · 科技与社会」）；没有「·」就说明这批词没主题，别把整串来源当主题用。 */
+function themeOf(word: Word): string | null {
+  const source = word.source?.trim();
+  if (!source) return null;
+  const at = source.lastIndexOf('·');
+  if (at < 0) return null;
+  const theme = source.slice(at + 1).trim();
+  return theme || null;
+}
 
-/** 句子量随目标词数走：3 个词以内 1~2 句，避免退化成小作文。 */
-export function sentenceTarget(count: number): string {
-  return count > 3 ? '1~3 句' : '1~2 句';
+function scenario(themes: string[]): string {
+  if (themes.length === 1) {
+    return `围绕「${themes[0]}」写一小段：说清一件具体的事或一个明确的观点，把勾选的词自然用进去。`;
+  }
+  if (themes.length > 1) {
+    return `这几个词分属「${themes.join('」「')}」，自选一个能同时容纳它们的场景，把词自然用进去。`;
+  }
+  return '自选一个生活、学习或工作场景，说清一件具体的事或一个明确的观点，把勾选的词自然用进去。';
 }
 
 export function loadTasks(): WritingTask[] {
@@ -47,21 +39,35 @@ export function saveTasks(tasks: WritingTask[]): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
 }
 
-export function createTask(words: Word[], targetWordIds: string[]): WritingTask {
+export function createTask(words: Word[], targetWordIds: string[], choice: LengthChoice = 'auto'): WritingTask {
   const existing = loadTasks();
   const targets = targetWordIds
     .map((id) => words.find((w) => w.id === id))
     .filter((w): w is Word => w !== undefined);
-  const topic = topics[existing.length % topics.length];
+  const themes = [...new Set(targets.map(themeOf).filter((theme): theme is string => !!theme))];
+  const length = passageSpec(choice, targets.length);
   const task: WritingTask = {
     id: crypto.randomUUID(),
-    title: topic.title,
-    prompt: `${topic.scenario}\n\n限定写作：写 ${sentenceTarget(targets.length)}，把勾选的 ${targets.length} 个目标词全部用出来。`,
+    title: themes.length === 1 ? `限定写作：${themes[0]}` : '限定写作：自选场景',
+    prompt: `${scenario(themes)}\n\n${lengthPrompt(targets.length, length)}`,
     targetWordIds: targets.map((w) => w.id),
     status: 'drafting',
+    length,
   };
   saveTasks([...existing, task]);
   return task;
+}
+
+/** 任务进行中改篇幅：题干里的篇幅行跟着换，示范与点评由调用方清空。 */
+export function applyLength(task: WritingTask, choice: LengthChoice): WritingTask {
+  const length = passageSpec(choice, task.targetWordIds.length);
+  const next: WritingTask = {
+    ...task,
+    length,
+    prompt: task.prompt.replace(/篇幅：[^\n]*/, lengthPrompt(task.targetWordIds.length, length)),
+  };
+  saveTasks(loadTasks().map((t) => (t.id === next.id ? next : t)));
+  return next;
 }
 
 export function setStatus(id: string, status: WritingTask['status']): WritingTask[] {

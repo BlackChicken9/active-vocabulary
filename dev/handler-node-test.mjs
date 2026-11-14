@@ -35,7 +35,7 @@ function post(path, body) {
   });
 }
 
-const configured = createHandler({ DASHSCOPE_API_KEY: 'sk-test' });
+const configured = createHandler({ LLM_API_KEY: 'sk-test' });
 const unconfigured = createHandler({});
 
 // 1. 路由与方法
@@ -73,7 +73,8 @@ assert.equal(feedback.feedback.usages.length, 2);
 assert.deepEqual(feedback.feedback.usages.map((u) => u.wordId), ['alleviate', 'leverage']);
 assert.equal(feedback.feedback.accuracy, 100);
 assert.equal(feedback.feedback.taskId, 't1');
-assert.match(upstreamCalls[0].url, /dashscope\.aliyuncs\.com\/compatible-mode\/v1\/chat\/completions$/);
+assert.match(upstreamCalls[0].url, /api\.deepseek\.com\/v1\/chat\/completions$/);
+assert.match(upstreamCalls[0].options.headers['user-agent'], /Windows/);
 assert.match(upstreamCalls[0].options.headers.authorization, /^Bearer sk-test$/);
 
 // 5. 代码围栏包裹的 JSON 也能解析
@@ -98,4 +99,96 @@ assert.deepEqual(JSON.parse(await failed.text()), { ok: false, error: 'upstream_
 stubUpstream('模型今天不想说话');
 assert.equal((await configured(post('model-text', { words: WORDS, prompt: 'x' }))).status, 502);
 
-console.log('functions/handler.ts 全部 8 组断言通过');
+// 9. intake 正常路径：脏字段被清掉、词头去重、缺字段留空
+stubUpstream({
+  words: [
+    {
+      headword: 'ubiquitous',
+      pos: 'adj.',
+      meaningZh: '无处不在的',
+      theme: '科技与社会',
+      examples: ['Phones are ubiquitous.'],
+      collocations: [{ phrase: 'ubiquitous in daily life', gloss: '在日常生活中无处不在' }],
+    },
+    { headword: '   ' },
+    { headword: 'UBIQUITOUS', meaningZh: '重复词头' },
+    { headword: 'bare', meaningZh: 123, theme: 456, examples: 'not an array', collocations: [{ gloss: '没有 phrase' }, 'junk'] },
+    { headword: '## 科技与生活' },
+    { headword: '- **1. ubiquitous**  adj. 无处不在的' },
+    { headword: 'Phones are ubiquitous in our daily lives. 手机在日常生活中无处不在。' },
+    { headword: 'a'.repeat(45) },
+    { headword: "it's hard to know for sure" },
+  ],
+});
+const intakeResult = await configured(post('intake', { raw: 'ubiquitous, bare' }));
+const intake = JSON.parse(await intakeResult.text());
+assert.equal(intakeResult.status, 200);
+assert.equal(intake.ok, true);
+assert.deepEqual(intake.words.map((w) => w.headword), ['ubiquitous', 'bare', "it's hard to know for sure"]);
+assert.deepEqual(intake.words[1], {
+  headword: 'bare',
+  pos: '',
+  meaningZh: '',
+  theme: '',
+  examples: [],
+  collocations: [],
+});
+assert.equal(intake.words[0].theme, '科技与社会');
+assert.equal(intake.words[0].collocations[0].phrase, 'ubiquitous in daily life');
+assert.equal(upstreamCalls[0].options.body.includes('Phones are ubiquitous'), false);
+assert.equal(JSON.parse(upstreamCalls[0].options.body).messages[1].content, 'ubiquitous, bare');
+
+// 10. intake 入参与空结果
+stubUpstream({ words: [] });
+assert.equal((await configured(post('intake', {}))).status, 400);
+assert.equal((await configured(post('intake', { raw: '   ' }))).status, 400);
+assert.equal(upstreamCalls.length, 0);
+assert.equal((await configured(post('intake', { raw: 'accumulate' }))).status, 502);
+
+// 11. intake 词卡数量封顶 30
+stubUpstream({ words: Array.from({ length: 40 }, (_, i) => ({ headword: `word${i}` })) });
+const capped = JSON.parse(await (await configured(post('intake', { raw: 'x'.repeat(6000) }))).text());
+assert.equal(capped.words.length, 30);
+
+// 12. 粘贴导入的词可能没有释义：feedback / model-text 不能因此拒绝请求
+stubUpstream({ usages: [{ wordId: 'bare', used: true, natural: true, note: '用得自然' }], accuracy: 90, overall: '不错' });
+const noGloss = [{ id: 'bare', headword: 'ubiquitous', meaningZh: '', collocations: [] }];
+const bareFeedback = await configured(post('feedback', { words: noGloss, text: 'Phones are ubiquitous.', taskId: 't2' }));
+assert.equal(bareFeedback.status, 200);
+assert.equal(JSON.parse(await bareFeedback.text()).feedback.usages[0].natural, true);
+stubUpstream({ text: 'Phones are ubiquitous.', wordIds: ['bare'] });
+assert.equal((await configured(post('model-text', { words: noGloss, prompt: '写一句' }))).status, 200);
+
+// 13. model-text 篇幅：区间进 prompt，越界被夹住，缺省按词数估
+stubUpstream({ text: 'One. Two. Three.', wordIds: ['alleviate'] });
+await configured(post('model-text', {
+  words: WORDS,
+  prompt: 'x',
+  length: { minSentences: 7, maxSentences: 10, minWords: 100, maxWords: 180 },
+}));
+let systemPrompt = JSON.parse(upstreamCalls[0].options.body).messages[0].content;
+assert.match(systemPrompt, /7~10 句英文（约 100~180 词）/);
+stubUpstream({ text: 'x', wordIds: [] });
+await configured(post('model-text', {
+  words: WORDS,
+  prompt: 'x',
+  length: { minSentences: 99, maxSentences: 1, minWords: -5, maxWords: 9000 },
+}));
+systemPrompt = JSON.parse(upstreamCalls[0].options.body).messages[0].content;
+assert.match(systemPrompt, /12~12 句英文（约 10~400 词）/);
+stubUpstream({ text: 'x', wordIds: [] });
+await configured(post('model-text', { words: WORDS, prompt: 'x' }));
+systemPrompt = JSON.parse(upstreamCalls[0].options.body).messages[0].content;
+assert.match(systemPrompt, /2~4 句英文（约 28~72 词）/);
+
+// 14. 长示范不被旧的 1200 字上限截断
+const longText = 'A very long sentence about daily practice. '.repeat(60);
+stubUpstream({ text: longText, wordIds: ['alleviate'] });
+const longModel = JSON.parse(await (await configured(post('model-text', {
+  words: WORDS,
+  prompt: 'x',
+  length: { minSentences: 7, maxSentences: 10, minWords: 100, maxWords: 180 },
+}))).text());
+assert.equal(longModel.modelText.text, longText.trim());
+
+console.log('functions/handler.ts 全部 14 组断言通过');

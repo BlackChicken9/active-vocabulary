@@ -1,7 +1,8 @@
-import type { Feedback, Submission, Word, WordUsage, WritingTask } from '../../types';
+import type { Collocation, Feedback, Submission, Word, WordUsage, WritingTask } from '../../types';
 import { ApiError, requestJson } from './api';
 import { generateMockFeedback } from './mockFeedback';
 import { generateModelText, type ModelText } from './modelText';
+import { taskLength } from './passageLength';
 
 export interface AiResult<T> {
   data: T;
@@ -113,12 +114,115 @@ export async function requestModelText(
   words: Word[],
 ): Promise<AiResult<ModelText>> {
   try {
-    const data = await post('model-text', { prompt: task.prompt, words: targets(task, words) });
+    const data = await post('model-text', {
+      prompt: task.prompt,
+      words: targets(task, words),
+      length: taskLength(task),
+    });
     return { data: readModelText(data), degraded: null };
   } catch (error) {
     return {
       data: generateModelText(task, words),
       degraded: `${reason(error)}，示范短文改由词本例句拼接`,
+    };
+  }
+}
+
+export interface IntakeCard {
+  headword: string;
+  pos: string;
+  meaningZh: string;
+  theme: string;
+  examples: string[];
+  collocations: Collocation[];
+}
+
+const MAX_INTAKE = 30;
+
+function text(value: unknown, max: number): string {
+  return typeof value === 'string' ? value.trim().slice(0, max) : '';
+}
+
+function readIntakeCards(value: unknown): IntakeCard[] {
+  const raw = (value as Record<string, unknown>)?.words;
+  if (!Array.isArray(raw) || !raw.length) throw new Error('invalid_intake');
+  return raw
+    .map((item) => {
+      const card = (item ?? {}) as Record<string, unknown>;
+      const examples = Array.isArray(card.examples)
+        ? card.examples.filter((e): e is string => typeof e === 'string' && !!e.trim()).slice(0, 2)
+        : [];
+      const collocations = Array.isArray(card.collocations)
+        ? card.collocations
+            .map((entry) => {
+              const c = (entry ?? {}) as Record<string, unknown>;
+              return { phrase: text(c.phrase, 80), gloss: text(c.gloss, 60) };
+            })
+            .filter((c) => c.phrase)
+            .slice(0, 4)
+        : [];
+      return {
+        headword: text(card.headword, 64),
+        pos: text(card.pos, 16),
+        meaningZh: text(card.meaningZh, 160),
+        theme: text(card.theme, 24),
+        examples,
+        collocations,
+      };
+    })
+    .filter((card) => card.headword)
+    .slice(0, MAX_INTAKE);
+}
+
+/** 释义通常从中文或词性缩写开始，前面那段才是词头。 */
+const POS_MARKER = /\s+(?:n|v|vt|vi|adj|adv|prep|conj|pron|pl)\.\s/i;
+
+function headwordFrom(chunk: string): string {
+  const cleaned = chunk
+    .replace(/[*`>#•\-]+/g, ' ')
+    .replace(/^\s*\d+\s*[.)、]?\s*/, ' ')
+    .trim();
+  const cuts = [cleaned.search(/[\u4e00-\u9fff]/), cleaned.search(POS_MARKER)].filter(
+    (index) => index >= 0,
+  );
+  const head = (cuts.length ? cleaned.slice(0, Math.min(...cuts)) : cleaned)
+    .replace(/\s+/g, ' ')
+    .replace(/^[^A-Za-z]+/, '')
+    .replace(/[^A-Za-z0-9' -]+$/, '')
+    .trim();
+  if (!/[A-Za-z]/.test(head) || head.length > 40) return '';
+  // 四个词以上基本是例句，不是词头。
+  return head.split(/\s+/).length > 4 ? '' : head;
+}
+
+/** 网关不可用时的退路：不猜释义，只把词头切出来，并如实告诉用户这次没走 AI。 */
+function splitLocally(raw: string): IntakeCard[] {
+  const seen = new Set<string>();
+  const cards: IntakeCard[] = [];
+  for (const line of raw.split(/\n+/)) {
+    for (const chunk of line.split(/[,;:，；：、]+/)) {
+      const headword = headwordFrom(chunk);
+      if (!headword) continue;
+      const key = headword.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      cards.push({ headword, pos: '', meaningZh: '', theme: '', examples: [], collocations: [] });
+      if (cards.length >= MAX_INTAKE) return cards;
+    }
+  }
+  return cards;
+}
+
+export async function requestIntake(raw: string): Promise<AiResult<IntakeCard[]>> {
+  try {
+    const data = await post('intake', { raw });
+    const cards = readIntakeCards(data);
+    if (!cards.length) throw new Error('invalid_intake');
+    return { data: cards, degraded: null };
+  } catch (error) {
+    return {
+      data: splitLocally(raw),
+      degraded: `${reason(error)}，已本地切出词头，释义与例句留空`,
     };
   }
 }

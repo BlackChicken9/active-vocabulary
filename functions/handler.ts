@@ -1,5 +1,5 @@
 export interface GatewayEnv {
-  DASHSCOPE_API_KEY?: string;
+  LLM_API_KEY?: string;
   AI_MODEL?: string;
   AI_BASE_URL?: string;
 }
@@ -11,10 +11,12 @@ interface TargetWord {
   collocations: string[];
 }
 
-const DEFAULT_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
-const DEFAULT_MODEL = 'qwen-plus';
+const DEFAULT_BASE_URL = 'https://api.deepseek.com/v1';
+const DEFAULT_MODEL = 'deepseek-chat';
 const MAX_BODY = 12_000;
 const MAX_TEXT = 2_000;
+const MAX_RAW = 6_000;
+const MAX_CARDS = 30;
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -27,9 +29,10 @@ function clip(value: string, max: number): string {
   return value.length > max ? `${value.slice(0, max)}…` : value;
 }
 
-function route(pathname: string): 'feedback' | 'model-text' | null {
+function route(pathname: string): 'feedback' | 'model-text' | 'intake' | null {
   if (pathname.endsWith('/feedback')) return 'feedback';
   if (pathname.endsWith('/model-text')) return 'model-text';
+  if (pathname.endsWith('/intake')) return 'intake';
   return null;
 }
 
@@ -46,8 +49,9 @@ function parseWords(value: unknown): TargetWord[] | null {
     const record = item as Record<string, unknown>;
     const id = asString(record.id, 64);
     const headword = asString(record.headword, 64);
-    const meaningZh = asString(record.meaningZh, 120);
-    if (!id || !headword || !meaningZh) return null;
+    if (!id || !headword) return null;
+    // 粘贴导入的词可能还没有释义，缺了不该让整次点评失败。
+    const meaningZh = asString(record.meaningZh, 120) ?? '';
     const collocations = Array.isArray(record.collocations)
       ? record.collocations
           .map((c) =>
@@ -76,7 +80,9 @@ async function chat(env: GatewayEnv, prompt: string, user: string): Promise<unkn
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      authorization: `Bearer ${env.DASHSCOPE_API_KEY}`,
+      authorization: `Bearer ${env.LLM_API_KEY}`,
+      // 运行时 fetch 默认不带 UA，这里显式给一个可识别的桌面端标识。
+      'user-agent': 'active-vocab-sites/1.0 (Windows)',
     },
     body: JSON.stringify({
       model: env.AI_MODEL || DEFAULT_MODEL,
@@ -113,14 +119,33 @@ function feedbackPrompt(words: TargetWord[]): string {
   ].join('\n');
 }
 
-function modelTextPrompt(words: TargetWord[]): string {
+function modelTextPrompt(words: TargetWord[], length: PassageLength): string {
   return [
     '你是英语写作助教，为学习者写一段「示范答案」，把每个目标词自然用出来，并尽量带上它的常见搭配。',
-    '只输出 JSON：{"text":"1~3 句英文，连贯成一小段","wordIds":["实际用到的目标词 id"]}。',
-    '不要中文，不要解释，不要列出词表。',
+    `只输出 JSON：{"text":"${length.minSentences}~${length.maxSentences} 句英文（约 ${length.minWords}~${length.maxWords} 词），连贯成一段","wordIds":["实际用到的目标词 id"]}。`,
+    '句数与词数都要落在给定区间内；每个目标词至少出现一次；不要中文，不要解释，不要列出词表。',
     '目标词表：',
     describe(words),
   ].join('\n');
+}
+
+interface PassageLength {
+  minSentences: number;
+  maxSentences: number;
+  minWords: number;
+  maxWords: number;
+}
+
+/** 篇幅由前端选，但网关夹住上下限：模型不该被要求写 500 句，也不该收到 min>max 的区间。 */
+function parseLength(value: unknown, wordCount: number): PassageLength {
+  const record = (value ?? {}) as Record<string, unknown>;
+  const num = (input: unknown, fallback: number): number =>
+    typeof input === 'number' && Number.isFinite(input) ? Math.round(input) : fallback;
+  const minSentences = Math.min(12, Math.max(1, num(record.minSentences, Math.min(8, Math.max(2, wordCount)))));
+  const maxSentences = Math.min(12, Math.max(minSentences, num(record.maxSentences, minSentences + 2)));
+  const minWords = Math.min(400, Math.max(10, num(record.minWords, minSentences * 14)));
+  const maxWords = Math.min(400, Math.max(minWords, num(record.maxWords, maxSentences * 18)));
+  return { minSentences, maxSentences, minWords, maxWords };
 }
 
 function normalizeFeedback(data: unknown, words: TargetWord[], text: string, taskId: string) {
@@ -158,7 +183,8 @@ function normalizeFeedback(data: unknown, words: TargetWord[], text: string, tas
 
 function normalizeModelText(data: unknown, words: TargetWord[]) {
   const record = (data ?? {}) as Record<string, unknown>;
-  const text = asString(record.text, 1_200);
+  // 长档最多 12 句，1200 字会把正常长示范截断。
+  const text = asString(record.text, 2_600);
   if (!text) throw new Error('upstream_empty');
   const ids = Array.isArray(record.wordIds)
     ? record.wordIds.filter((id): id is string => typeof id === 'string')
@@ -166,24 +192,103 @@ function normalizeModelText(data: unknown, words: TargetWord[]) {
   return { text, wordIds: ids.length ? ids : words.map((w) => w.id) };
 }
 
+function intakePrompt(): string {
+  return [
+    '你是英语词卡整理助手。用户会粘贴任意格式的内容：可能只是一串单词，也可能是带释义、派生词和例句的笔记。',
+    '只输出 JSON：{"words":[{"headword":"英文词头或短语","pos":"词性，如 v. / adj. / n. / 短语；原文没有就留空字符串","meaningZh":"简体中文释义","theme":"这批词共同的话题，简体中文 2~6 个字，如「海洋与环境」；判断不出就留空字符串","examples":["一句英文例句"],"collocations":[{"phrase":"英文搭配","gloss":"中文说明"}]}]}。',
+    '规则：原文已有的释义、派生词、例句照抄，不要改写；只有原文缺失时才由你补，补的例句要短、日常可用；',
+    '搭配必须是能整块复用的词块（如 early intervention），不要拿派生词充当搭配；同一次粘贴的词尽量归到同一个 theme；',
+    '词头去重；最多 30 条；不要输出解释。',
+  ].join('\n');
+}
+
+function asStringList(value: unknown, max: number, limit: number, itemMax: number): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .slice(0, limit)
+    .map((item) => asString(item, itemMax))
+    .filter((item): item is string => item !== null)
+    .slice(0, max);
+}
+
+/** 词头只允许英文、空格与常见标点：模型把整行笔记、例句或中文释义当词头时直接丢掉，别污染用户词库。 */
+const HEADWORD_OK = /^[A-Za-z](?:[A-Za-z0-9'’ -]{0,38}[A-Za-z0-9'’.])?$/;
+
+/** 用户粘什么都有可能，所以这里逐条兜底：缺词头就丢掉，其余字段缺了给空值，不让前端拿到脏结构。 */
+function normalizeIntake(data: unknown) {
+  const record = (data ?? {}) as Record<string, unknown>;
+  const raw = Array.isArray(record.words) ? record.words : [];
+  const seen = new Set<string>();
+  const words: {
+    headword: string;
+    pos: string;
+    meaningZh: string;
+    theme: string;
+    examples: string[];
+    collocations: { phrase: string; gloss: string }[];
+  }[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const card = item as Record<string, unknown>;
+    const headword = asString(card.headword, 64);
+    if (!headword || !HEADWORD_OK.test(headword)) continue;
+    const key = headword.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const collocations = (Array.isArray(card.collocations) ? card.collocations : [])
+      .slice(0, 4)
+      .map((entry) => {
+        if (!entry || typeof entry !== 'object') return null;
+        const phrase = asString((entry as Record<string, unknown>).phrase, 80);
+        if (!phrase) return null;
+        return { phrase, gloss: asString((entry as Record<string, unknown>).gloss, 60) ?? '' };
+      })
+      .filter((entry): entry is { phrase: string; gloss: string } => entry !== null);
+    words.push({
+      headword,
+      pos: asString(card.pos, 16) ?? '',
+      meaningZh: asString(card.meaningZh, 160) ?? '',
+      theme: asString(card.theme, 24) ?? '',
+      examples: asStringList(card.examples, 2, 4, 240),
+      collocations,
+    });
+    if (words.length >= MAX_CARDS) break;
+  }
+  if (!words.length) throw new Error('upstream_empty');
+  return { words };
+}
+
 export function createHandler(env: GatewayEnv = {}) {
   return async function handler(request: Request): Promise<Response> {
     const path = route(new URL(request.url).pathname);
     if (!path) return json({ ok: false, error: 'not_found' }, 404);
     if (request.method !== 'POST') return json({ ok: false, error: 'method_not_allowed' }, 405);
-    if (!env.DASHSCOPE_API_KEY?.trim()) {
+    if (!env.LLM_API_KEY?.trim()) {
       return json({ ok: false, error: 'service_not_configured' }, 503);
     }
 
     const body = await readBody(request);
-    const words = body ? parseWords(body.words) : null;
-    if (!body || !words) return json({ ok: false, error: 'invalid_request' }, 400);
+    if (!body) return json({ ok: false, error: 'invalid_request' }, 400);
+
+    if (path === 'intake') {
+      const raw = asString(body.raw, MAX_RAW);
+      if (!raw) return json({ ok: false, error: 'invalid_request' }, 400);
+      try {
+        return json({ ok: true, ...normalizeIntake(await chat(env, intakePrompt(), raw)) });
+      } catch {
+        return json({ ok: false, error: 'upstream_unavailable' }, 502);
+      }
+    }
+
+    const words = parseWords(body.words);
+    if (!words) return json({ ok: false, error: 'invalid_request' }, 400);
 
     try {
       if (path === 'model-text') {
         const prompt = asString(body.prompt, 600) ?? '';
+        const length = parseLength(body.length, words.length);
         const modelText = normalizeModelText(
-          await chat(env, modelTextPrompt(words), `题干：${prompt}`),
+          await chat(env, modelTextPrompt(words, length), `题干：${prompt}`),
           words,
         );
         return json({ ok: true, modelText });
