@@ -23,12 +23,15 @@ export interface AiResult<T> {
   degraded: string | null;
   /** 网关带回的实际型号；没走成 AI 时为 null。 */
   model: string | null;
+  /** 只有走站点密钥生成的示范才带：这次之后还能免费生成几篇；走自带密钥或没数字时 null。 */
+  trialLeft?: number | null;
 }
 
 const FALLBACK_MESSAGES: Record<string, string> = {
   service_not_configured: '网关没配 DeepSeek 密钥',
   model_key_invalid: '你的 DeepSeek 密钥格式不对（页脚可改）',
   model_key_rejected: '你的 DeepSeek 密钥被拒（页脚可换）',
+  trial_exceeded: '免费示范的 5 次已用完，页脚粘自己的 DeepSeek 密钥继续',
   upstream_unavailable: 'AI 网关调用上游失败',
   invalid_request: 'AI 网关拒绝了请求参数',
   access_denied: '没有访问 AI 网关的权限',
@@ -155,6 +158,12 @@ export async function requestFeedback(
   }
 }
 
+/** 网关只在走站点密钥的示范上带回剩余次数；别的形状一律当不知道，界面宁可不显示也不猜。 */
+function trialLeftOf(value: unknown): number | null {
+  const raw = (value as Record<string, unknown>)?.trialLeft;
+  return typeof raw === 'number' && Number.isInteger(raw) && raw >= 0 && raw <= 999 ? raw : null;
+}
+
 export async function requestModelText(
   task: WritingTask,
   words: Word[],
@@ -165,12 +174,18 @@ export async function requestModelText(
       words: targets(task, words),
       length: taskLength(task),
     });
-    return { data: readModelText(data), degraded: null, model: modelOf(data) };
+    return {
+      data: readModelText(data),
+      degraded: null,
+      model: modelOf(data),
+      trialLeft: trialLeftOf(data),
+    };
   } catch (error) {
     return {
       data: generateModelText(task, words),
       degraded: `${reason(error)}，示范短文改由词本例句拼接`,
       model: null,
+      trialLeft: error instanceof ApiError && error.code === 'trial_exceeded' ? 0 : null,
     };
   }
 }

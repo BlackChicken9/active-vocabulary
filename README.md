@@ -53,7 +53,11 @@
 
 网关侧的约束（`functions/handler.ts`）：只接受 POST，请求体 ≤12000 字；`feedback` / `model-text` 的 `words[]` 为 1~8 条，`id` 与 `headword` 必填，`meaningZh` **允许空串**（刚粘贴导入的词可能还没有释义，缺释义不该让整次点评失败）；`explain` 词表缺失也能讲——习作集的「补分析」就靠这条：那一屏没有任务，只有当时存下的正文与目标词（词头 + 释义，搭配留空）。篇幅契约 `length = { minSentences, maxSentences, minWords, maxWords }`，网关把句数夹在 1~12、词数夹在 10~400 并保证 min ≤ max；请求没带 `length` 时按「自动」档同一条规则估（句数 = 词数、最多多一句、每句 12~16 词），免得前端改了档位网关还按老的写。
 
-单次调用的成本天花板：输出 `max_tokens` 默认 4096（`gloss` 512、`explain` 4000），超时 20s（`explain` 45s），生成类请求在前端一次只排一路。没做按人头的赠送额度——那要在服务端记住谁用了几次，而站点没有数据库；账户侧的上限只能在模型服务商后台设。
+单次调用的成本天花板：输出 `max_tokens` 默认 4096（`gloss` 512、`explain` 4000），超时 20s（`explain` 45s），生成类请求在前端一次只排一路。
+
+免费示范的额度（`TRIAL_LIMIT = 5`）：没自带密钥的访客用站点 Secret 写示范，一台设备给 5 次，第 6 次返回 `trial_exceeded`（HTTP **429**，前端把 401/403 一律当「没权限」，那会盖掉「额度用完」这句实话），页脚粘上自己的 DeepSeek 密钥就照旧继续。计数放在浏览器的一枚签名 cookie 里：`av_trial=<次数>.<HMAC-SHA256 签名>`，签名用的 key 就是站点 Secret 本身——它只参与签名，不进 cookie、不进响应、不进日志。cookie 是 `HttpOnly; SameSite=Lax; Path=/`、一年有效，只在本机同源发出去，里面除了一个数字和它的签名什么都没有。三条规矩：只数 `model-text`（讲解、点评、收词、点词查释义都不数，别把来练作的人挡在门外）；只有这次真生成成功才扣一次（上游 5xx 不下发新 cookie）；带 `x-model-key` 的访客花自己的额度，既不计数也不收 cookie，响应里的 `trialLeft` 直接是 `null`。前端在结果那一行如实报账：「来源：AI 网关 · deepseek-chat · 免费示范剩 3 次」，走自带密钥时没有这个尾巴，因为那笔账不在本站身上。
+
+这道闸是**成本上限，不是身份**：清了 cookie、换个浏览器或开无痕都能重来。真正按人头得让站点记住「谁」用了几次——站点的 database 是 `disabled`、legacy 适配器只认匿名请求，只有登录过 Qoder 的用户才有网关能验的 `x-qoder-user-context`，公开站的匿名访客拿不到。账户侧的硬上限仍然只能在模型服务商后台设。
 
 密钥优先级：带 `x-model-key` 就用它（形状不对直接 `model_key_invalid`，一次上游都不打），没带才用站点 Secret，两个都没有才 `service_not_configured`。带了自带 key 时失败**不回落到站点 key**——那会悄悄花掉站主的额度，用户还以为走的是自己的。
 
@@ -61,7 +65,7 @@
 
 五路响应都带一个 `model` 字段，说明这次实际调的是哪个型号：上游自己报了具体版本（如 `deepseek-chat-v3`）就按它，没报才回落到 `AI_MODEL` 或默认值。前端把它显示在结果下面的「来源：AI 网关 · deepseek-chat」，没走成 AI 时不显示型号，只显示兜底原因——界面不猜型号。
 
-**任何一路不通都不假装成功。** 缺 key 返回 `service_not_configured`，上游失败返回 `upstream_unavailable`，自带密钥形状不对或被上游拒绝返回 `model_key_invalid` / `model_key_rejected`，前端每一路都有本地兜底并在结果里写明这次为什么没走 AI：点评退回本地 mock 规则、示范退回词卡例句拼接、讲解只切句不给译文、收词按换行与逗号切分只填 `headword`。返回体也不带上游细节（状态码、异常文本、密钥）。
+**任何一路不通都不假装成功。** 缺 key 返回 `service_not_configured`，上游失败返回 `upstream_unavailable`，自带密钥形状不对或被上游拒绝返回 `model_key_invalid` / `model_key_rejected`，免费示范用完返回 `trial_exceeded`，前端每一路都有本地兜底并在结果里写明这次为什么没走 AI：点评退回本地 mock 规则、示范退回词卡例句拼接、讲解只切句不给译文、收词按换行与逗号切分只填 `headword`。返回体也不带上游细节（状态码、异常文本、密钥）。
 
 生成类请求（`intake` / `model-text` / `explain` / `feedback`）一次只跑一路：写作屏和词本屏各转各的圈，但请求在 `aiClient.ts` 里排队，谁先点谁先走，不会两路同时打到上游。`gloss` 是短请求，走旁路不排队，点词查释义不会被前面正在生成的长文卡住。
 
@@ -70,7 +74,7 @@
 - **Vite 7 + TypeScript 5.6**，无前端框架：视图是模板字符串 + `escapeHtml` 转义，状态在模块闭包里，改动走重绘；没有虚拟 DOM 与运行时依赖，构建产物就是静态资源。
 - **样式**：`src/style.css` 一套设计令牌（配色/字体/圆角/按钮），`public/assets/ui/cards.css`、`public/assets/motion/motion.css` 是卡片与动效的公共层，字体子集本地化在 `public/assets/fonts/`。
 - **AI 网关**：Deno Function（`functions/index.ts` 入口 + `functions/handler.ts` 全部逻辑），单文件、无框架，按路径尾段路由。
-- **存储**：浏览器 localStorage，无账号、无服务端数据库。每个浏览器只看得见自己的词库与密钥。
+- **存储**：浏览器 localStorage，无账号、无服务端数据库。每个浏览器只看得见自己的词库与密钥。另有唯一一枚本站 cookie `av_trial`，只装「这台设备用掉几次免费示范」这个数字和它的签名，供 AI 网关记账用，不跨站、不参与内容存储。
 
 ## 目录
 

@@ -354,4 +354,66 @@ for (const [path, body, payload] of [
   assert.equal(JSON.parse(await routed.text()).model, 'deepseek-chat');
 }
 
-console.log('functions/handler.ts 全部 21 组断言通过');
+// 22. 站点密钥的免费示范：数到 5 次就要访客自己的密钥
+stubUpstream({ text: 'I alleviate stress. Phones are ubiquitous.', wordIds: ['alleviate'] });
+
+/** 网关只下发一条 cookie；拿它当浏览器会原样带回的那串，剩下的属性留在响应里检查。 */
+function trialCookieOf(response) {
+  const raw = response.headers.getSetCookie
+    ? response.headers.getSetCookie()
+    : [response.headers.get('set-cookie') ?? ''];
+  return raw.find((piece) => piece.startsWith('av_trial=')) ?? '';
+}
+
+const firstTrial = await configured(post('model-text', { words: WORDS, prompt: 'x' }));
+const firstTrialBody = JSON.parse(await firstTrial.text());
+assert.equal(firstTrial.status, 200);
+assert.equal(firstTrialBody.trialLeft, 4);
+const firstTrialCookie = trialCookieOf(firstTrial);
+assert.match(firstTrialCookie, /^av_trial=1\.[A-Za-z0-9_-]{10,}/);
+assert.match(firstTrialCookie, /HttpOnly/);
+assert.match(firstTrialCookie, /SameSite=Lax/);
+assert.match(firstTrialCookie, /Max-Age=31536000/);
+
+// 次数是累计的：同一台设备每生成一篇少一次，第五篇之后不再给站点密钥兜底。
+let carried = firstTrialCookie.split(';')[0];
+for (const left of [3, 2, 1, 0]) {
+  const step = await configured(post('model-text', { words: WORDS, prompt: 'x' }, { cookie: carried }));
+  assert.equal(step.status, 200);
+  assert.equal(JSON.parse(await step.text()).trialLeft, left);
+  carried = trialCookieOf(step).split(';')[0];
+}
+stubUpstream({});
+const exhausted = await configured(post('model-text', { words: WORDS, prompt: 'x' }, { cookie: carried }));
+assert.equal(exhausted.status, 429);
+assert.deepEqual(JSON.parse(await exhausted.text()), { ok: false, error: 'trial_exceeded' });
+assert.equal(upstreamCalls.length, 0);
+// 额度只管示范：讲解、点评、导入照旧，别把来练作的访客挡在门外。
+stubUpstream({ usages: [{ wordId: 'alleviate', used: true, natural: true, note: '搭配自然' }], accuracy: 100, overall: '不错' });
+const stillFeedback = await configured(post('feedback', { words: WORDS, text: 'I alleviate stress.', taskId: 't1' }, { cookie: carried }));
+assert.equal(stillFeedback.status, 200);
+assert.equal(trialCookieOf(stillFeedback), '');
+// 自带密钥的访客花自己的额度：不计数、不下发 cookie，示范用完照样能生成。
+stubUpstream({ text: 'Phones are ubiquitous.', wordIds: ['alleviate'] });
+const byoAfterTrial = await configured(
+  post('model-text', { words: WORDS, prompt: 'x' }, { cookie: carried, 'x-model-key': BYO }),
+);
+assert.equal(byoAfterTrial.status, 200);
+assert.equal(JSON.parse(await byoAfterTrial.text()).trialLeft, null);
+assert.equal(trialCookieOf(byoAfterTrial), '');
+// 改过的计数、对不上的签名一律当 0 次：伪造撑死也只能回到免费区。
+const forged = await configured(post('model-text', { words: WORDS, prompt: 'x' }, { cookie: 'av_trial=99.deadbeef' }));
+assert.equal(forged.status, 200);
+assert.equal(JSON.parse(await forged.text()).trialLeft, 4);
+const tampered = await configured(
+  post('model-text', { words: WORDS, prompt: 'x' }, { cookie: `av_trial=9.${carried.split('.')[1]}` }),
+);
+assert.equal(tampered.status, 200);
+assert.equal(JSON.parse(await tampered.text()).trialLeft, 4);
+// 上游失败不该扣掉访客的一次机会。
+stubUpstream({}, { status: 500 });
+const failedUpstream = await configured(post('model-text', { words: WORDS, prompt: 'x' }));
+assert.equal(failedUpstream.status, 502);
+assert.equal(trialCookieOf(failedUpstream), '');
+
+console.log('functions/handler.ts 全部 22 组断言通过');
