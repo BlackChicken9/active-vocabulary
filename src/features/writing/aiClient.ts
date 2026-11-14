@@ -26,9 +26,9 @@ export interface AiResult<T> {
 }
 
 const FALLBACK_MESSAGES: Record<string, string> = {
-  service_not_configured: 'AI 网关未配置密钥',
-  model_key_invalid: '你的模型密钥格式不对（页脚可改）',
-  model_key_rejected: '你的模型密钥被上游拒绝（页脚可换）',
+  service_not_configured: '网关没配 DeepSeek 密钥',
+  model_key_invalid: '你的 DeepSeek 密钥格式不对（页脚可改）',
+  model_key_rejected: '你的 DeepSeek 密钥被拒（页脚可换）',
   upstream_unavailable: 'AI 网关调用上游失败',
   invalid_request: 'AI 网关拒绝了请求参数',
   access_denied: '没有访问 AI 网关的权限',
