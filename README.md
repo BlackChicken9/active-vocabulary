@@ -52,6 +52,8 @@
 
 网关侧的约束（`functions/handler.ts`）：只接受 POST，请求体 ≤12000 字；`feedback` / `model-text` 的 `words[]` 为 1~8 条，`id` 与 `headword` 必填，`meaningZh` **允许空串**（刚粘贴导入的词可能还没有释义，缺释义不该让整次点评失败）；`explain` 词表缺失也能讲。篇幅契约 `length = { minSentences, maxSentences, minWords, maxWords }`，网关把句数夹在 1~12、词数夹在 10~400 并保证 min ≤ max。
 
+单次调用的成本天花板：输出 `max_tokens` 默认 4096（`gloss` 512、`explain` 4000），超时 20s（`explain` 45s），生成类请求在前端一次只排一路。没做按人头的赠送额度——那要在服务端记住谁用了几次，而站点没有数据库；账户侧的上限只能在模型服务商后台设。
+
 密钥优先级：带 `x-model-key` 就用它（形状不对直接 `model_key_invalid`，一次上游都不打），没带才用站点 Secret，两个都没有才 `service_not_configured`。带了自带 key 时失败**不回落到站点 key**——那会悄悄花掉站主的额度，用户还以为走的是自己的。
 
 上游走 DeepSeek 的 OpenAI 兼容接口（`https://api.deepseek.com/v1`），环境变量：`API_KEY`（Secret，填 DeepSeek 的 key，给没自带密钥的访客兜底）、`AI_MODEL`（默认 `deepseek-chat`）、`AI_BASE_URL`（可选，换服务商时用）。密钥只在 edge 运行时读取，打包产物里没有。

@@ -124,7 +124,7 @@ async function chat(
     body: JSON.stringify({
       model: env.AI_MODEL || DEFAULT_MODEL,
       temperature: 0.2,
-      // 默认 4096 会把逐句讲解的 JSON 截断在半句上，讲解这一路显式抬高。
+      // 单次生成默认最多 4096 token，讲解那一路另给更低的封顶。
       max_tokens: options.maxTokens ?? 4096,
       response_format: { type: 'json_object' },
       messages: [
@@ -461,8 +461,10 @@ export function createHandler(env: GatewayEnv = {}) {
       const numbered = sentences.map((sentence, index) => `${index + 1}. ${sentence}`).join('\n');
       try {
         const explanation = normalizeExplanation(
+          // 讲解最多 12 句，按每句译文+结构+成分估 4000 token 够写完 JSON；
+          // 真被截断就整路退成本地兜底，不会拿半截译文糊弄学习者。
           await chat(cfg, explainPrompt(words, sentences.length), numbered, {
-            maxTokens: 6_000,
+            maxTokens: 4_000,
             timeoutMs: 45_000,
           }),
           sentences,

@@ -235,7 +235,7 @@ assert.deepEqual(explained.explanation.glossary.map((g) => g.term), [
 let explainBody = JSON.parse(upstreamCalls[0].options.body);
 assert.match(explainBody.messages[1].content, /^1\. Running helps me alleviate stress\.\n2\. You can leverage/);
 assert.match(explainBody.messages[0].content, /必须正好 2 项/);
-assert.equal(explainBody.max_tokens, 6000);
+assert.equal(explainBody.max_tokens, 4000);
 
 // 16. explain：模型少回一句也不崩，缺的那句留空；全空则收敛为 502
 stubUpstream({ sentences: [{ zh: '只回了第一句' }], glossary: [] });
