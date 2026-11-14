@@ -1,7 +1,19 @@
-import type { Collocation, Feedback, Submission, Word, WordUsage, WritingTask } from '../../types';
+import type {
+  Collocation,
+  Explanation,
+  Feedback,
+  GlossEntry,
+  SentenceNote,
+  SentencePart,
+  Submission,
+  Word,
+  WordUsage,
+  WritingTask,
+} from '../../types';
 import { ApiError, requestJson } from './api';
 import { generateMockFeedback } from './mockFeedback';
-import { generateModelText, type ModelText } from './modelText';
+import { generateExplanation, generateModelText, type ModelText } from './modelText';
+import { splitSentences } from './passage';
 import { taskLength } from './passageLength';
 
 export interface AiResult<T> {
@@ -125,6 +137,86 @@ export async function requestModelText(
       data: generateModelText(task, words),
       degraded: `${reason(error)}，示范短文改由词本例句拼接`,
     };
+  }
+}
+
+function readParts(value: unknown): SentencePart[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      const part = (item ?? {}) as Record<string, unknown>;
+      return { text: text(part.text, 160), role: text(part.role, 12) };
+    })
+    .filter((part) => part.text && part.role)
+    .slice(0, 12);
+}
+
+function readGlossary(value: unknown): GlossEntry[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const out: GlossEntry[] = [];
+  for (const item of value) {
+    const entry = (item ?? {}) as Record<string, unknown>;
+    const term = text(entry.term, 48);
+    const meaningZh = text(entry.meaningZh, 80);
+    if (!term || !meaningZh || seen.has(term.toLowerCase())) continue;
+    seen.add(term.toLowerCase());
+    out.push({ term, pos: text(entry.pos, 16), meaningZh });
+    if (out.length >= 140) break;
+  }
+  return out;
+}
+
+/** 句子一律用前端自己切的那份：网关按序号回讲解，两边切法一致才不会错位。 */
+function readExplanation(value: unknown, source: string): Explanation {
+  const raw = (value as Record<string, unknown>)?.explanation;
+  if (!raw || typeof raw !== 'object') throw new Error('invalid_explanation');
+  const body = raw as Record<string, unknown>;
+  const list = Array.isArray(body.sentences) ? body.sentences : [];
+  const sentences: SentenceNote[] = splitSentences(source).map((en, index) => {
+    const item = (list[index] ?? {}) as Record<string, unknown>;
+    return {
+      en,
+      zh: text(item.zh, 400),
+      structure: text(item.structure, 400),
+      parts: readParts(item.parts),
+    };
+  });
+  const glossary = readGlossary(body.glossary);
+  if (!sentences.length || (!glossary.length && !sentences.some((s) => s.zh || s.structure))) {
+    throw new Error('invalid_explanation');
+  }
+  return { sentences, glossary };
+}
+
+export async function requestExplain(
+  task: WritingTask,
+  source: string,
+  words: Word[],
+): Promise<AiResult<Explanation>> {
+  try {
+    const data = await post('explain', { text: source, words: targets(task, words) });
+    return { data: readExplanation(data, source), degraded: null };
+  } catch (error) {
+    return {
+      data: generateExplanation(source),
+      degraded: `${reason(error)}，译文与结构暂缺`,
+    };
+  }
+}
+
+export async function requestGloss(term: string, sentence: string): Promise<AiResult<GlossEntry>> {
+  try {
+    const data = await post('gloss', { term, sentence });
+    const entry = (data as Record<string, unknown>)?.entry as Record<string, unknown> | undefined;
+    const meaningZh = text(entry?.meaningZh, 80);
+    if (!meaningZh) throw new Error('invalid_gloss');
+    return {
+      data: { term: text(entry?.term, 48) || term, pos: text(entry?.pos, 16), meaningZh },
+      degraded: null,
+    };
+  } catch (error) {
+    return { data: { term, pos: '', meaningZh: '' }, degraded: reason(error) };
   }
 }
 

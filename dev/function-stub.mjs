@@ -26,13 +26,45 @@ function stubHeadwords(raw) {
   return out.slice(0, 30);
 }
 
+// 假讲解：按空格粗切主谓宾，只为验证成分映射、译文排版与点词浮层，不代表真实语法分析。
+function stubExplanation(numbered) {
+  const lines = numbered.split('\n').filter((line) => /^\d+\.\s/.test(line));
+  const glossary = new Map();
+  const sentences = lines.map((line) => {
+    const en = line.replace(/^\d+\.\s*/, '');
+    for (const word of en.match(/[A-Za-z][A-Za-z'’-]*/g) ?? []) {
+      const key = word.toLowerCase();
+      if (!glossary.has(key)) glossary.set(key, `${key}| |（假上游）${key} 的释义`);
+    }
+    const words = en.replace(/[.!?]$/, '').split(' ');
+    const subj = words.slice(0, 2).join(' ');
+    const verb = words[2] ?? '';
+    const rest = words.slice(3).join(' ');
+    const marked = [`[主语 ${subj}]`, verb && `[谓语 ${verb}]`, rest && `[宾语 ${rest}]`]
+      .filter(Boolean)
+      .join(' ');
+    return {
+      zh: `（假上游译文）${en}`,
+      structure: `（假上游结构）主语「${subj}」＋谓语「${verb}」，其余成分作宾语或修饰。`,
+      marked,
+    };
+  });
+  return { sentences, glossary: [...glossary.values()] };
+}
+
 globalThis.fetch = async (url, options) => {
   const body = JSON.parse(options.body);
   const system = body.messages[0].content;
   const user = body.messages[1].content;
   const isModelText = system.includes('示范答案');
   const isIntake = system.includes('词卡整理助手');
-  const payload = isIntake
+  const isExplain = system.includes('逐句讲解');
+  const isGloss = system.includes('英语学习词典');
+  const payload = isGloss
+    ? { term: user.match(/词：(.+)/)?.[1] ?? '', pos: 'v.', meaningZh: '（本地假上游）这个词的释义' }
+    : isExplain
+    ? stubExplanation(user)
+    : isIntake
     ? {
         // 假上游不会补释义；正好用来验证「网关没给全字段时前端不能崩」。
         words: stubHeadwords(user).map((headword) => ({
