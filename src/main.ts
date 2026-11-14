@@ -1,6 +1,7 @@
 import './style.css';
 import type { MasteryStatus } from './types';
 import { loadWords } from './features/words/wordStore';
+import { clearModelKey, keyTail, loadModelKey, saveModelKey } from './modelKey';
 import { mountWordsPanel, type WordsPanel } from './features/words/wordsPanel';
 import { mountWritingPanel } from './features/writing/writingPanel';
 
@@ -45,8 +46,16 @@ app.innerHTML = `
   </main>
   <footer class="foot">
     <div class="foot__in">
-      <span>词库与草稿只存在这台设备的浏览器里。</span>
-      <span>示范与点评走站点 Function，用你自己的模型密钥。</span>
+      <span>词库与任务只存在这台设备的浏览器里。</span>
+      <div class="keyrow">
+        <span class="keyrow__state" id="key-state" role="status"></span>
+        <label class="sr-only" for="model-key">模型密钥</label>
+        <input class="wb-input keyrow__input" id="model-key" type="password" autocomplete="off"
+               spellcheck="false" placeholder="粘贴你自己的模型密钥"
+               title="只存在这台设备的浏览器里，随请求交给本站网关；共享电脑上别用">
+        <button type="button" class="btn btn--sm btn--secondary" id="key-save">保存</button>
+        <button type="button" class="btn btn--sm btn--secondary" id="key-clear" hidden>清除</button>
+      </div>
     </div>
   </footer>`;
 
@@ -80,6 +89,47 @@ function renderTally(): void {
 }
 
 renderTally();
+
+/**
+ * 模型密钥：粘了自己的 key 就走自己的额度，没粘就用站点 Secret。
+ * 值只进 localStorage 和请求头，输入框 type=password、保存即清空，界面只留尾号。
+ */
+function mountKeyRow(): void {
+  const input = document.querySelector<HTMLInputElement>('#model-key')!;
+  const state = document.querySelector<HTMLElement>('#key-state')!;
+  const saveBtn = document.querySelector<HTMLButtonElement>('#key-save')!;
+  const clearBtn = document.querySelector<HTMLButtonElement>('#key-clear')!;
+
+  function show(message?: string, warn = false): void {
+    const key = loadModelKey();
+    state.textContent = message ?? (key ? `当前用你的密钥（尾号 ${keyTail(key)}）` : '当前用站点密钥');
+    state.classList.toggle('warn', warn);
+    clearBtn.hidden = !key;
+  }
+
+  function save(): void {
+    if (saveModelKey(input.value)) {
+      input.value = '';
+      show();
+      return;
+    }
+    show(input.value.trim() ? '密钥格式不对，检查有没有多复制空格' : '先粘贴密钥再保存', true);
+  }
+
+  saveBtn.addEventListener('click', save);
+  input.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    save();
+  });
+  clearBtn.addEventListener('click', () => {
+    clearModelKey();
+    show('已改用站点密钥');
+  });
+  show();
+}
+
+mountKeyRow();
 
 type View = 'write' | 'words';
 

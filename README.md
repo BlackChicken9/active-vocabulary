@@ -32,12 +32,13 @@
 - **篇幅四档**：自动（句数 = 目标词数，夹在 2~8 句）/ 短 2~3 句 / 中 4~6 句 / 长 7~10 句，见 `src/features/writing/passageLength.ts`。示范短文与自写共用同一区间，写作时实时显示句数/词数偏短、达标还是偏长。
 - **逐句讲解**：示范短文可切「整段 / 逐句」，逐句展开给译文、结构说明和按成分切分的原句高亮；某一句讲解失败可以单独重试。
 - **点词查释义**：示范与讲解里的每个单词都是按钮，点开看它在这一句里的释义；词库里没有的词可以直接「收进词库」。
+- **模型密钥**（页脚）：留空走访客看不见的站点 Secret；粘自己的 key 后所有生成请求改走自己的额度。输入框是密码型、保存即清空，界面只留尾号，值只在 `localStorage` 和请求头里。
 
-词库、任务与草稿都存在这台设备的浏览器 localStorage（键名 `tianchi.words` / `tianchi.tasks`），不上传任何文本内容；只有生成示范和点评时，题干与勾选项会发给 AI 网关。
+词库与任务存在这台设备的浏览器 localStorage（键名 `tianchi.words` / `tianchi.tasks`），自带的模型密钥存在同设备的 `tianchi.modelkey`；写作框里的草稿只在当前页面内，刷新会没。除生成请求外不上传任何文本内容，题干与勾选项只在调用 AI 网关时发出去。
 
 ## AI 网关
 
-前端只调同源 `/functions/v1/app/{intake,model-text,explain,gloss,feedback}`，密钥不进浏览器。
+前端只调同源 `/functions/v1/app/{intake,model-text,explain,gloss,feedback}`。站点密钥不下发浏览器；访客自带的那个 key 存在他自己的浏览器里，随请求头 `x-model-key` 交给网关用一次。
 
 | 路由         | 作用                              | 入参                              | 出参                  |
 | ------------ | --------------------------------- | --------------------------------- | --------------------- |
@@ -51,9 +52,11 @@
 
 网关侧的约束（`functions/handler.ts`）：只接受 POST，请求体 ≤12000 字；`feedback` / `model-text` 的 `words[]` 为 1~8 条，`id` 与 `headword` 必填，`meaningZh` **允许空串**（刚粘贴导入的词可能还没有释义，缺释义不该让整次点评失败）；`explain` 词表缺失也能讲。篇幅契约 `length = { minSentences, maxSentences, minWords, maxWords }`，网关把句数夹在 1~12、词数夹在 10~400 并保证 min ≤ max。
 
-上游走 DeepSeek 的 OpenAI 兼容接口（`https://api.deepseek.com/v1`），环境变量：`API_KEY`（必填 Secret，填 DeepSeek 的 key）、`AI_MODEL`（默认 `deepseek-chat`）、`AI_BASE_URL`（可选，换服务商时用）。密钥只在 edge 运行时读取，打包产物里没有。
+密钥优先级：带 `x-model-key` 就用它（形状不对直接 `model_key_invalid`，一次上游都不打），没带才用站点 Secret，两个都没有才 `service_not_configured`。带了自带 key 时失败**不回落到站点 key**——那会悄悄花掉站主的额度，用户还以为走的是自己的。
 
-**任何一路不通都不假装成功。** 缺 key 返回 `service_not_configured`，上游失败返回 `upstream_unavailable`，前端每一路都有本地兜底并在结果里写明这次为什么没走 AI：点评退回本地 mock 规则、示范退回词卡例句拼接、讲解只切句不给译文、收词按换行与逗号切分只填 `headword`。返回体也不带上游细节（状态码、异常文本、密钥）。
+上游走 DeepSeek 的 OpenAI 兼容接口（`https://api.deepseek.com/v1`），环境变量：`API_KEY`（Secret，填 DeepSeek 的 key，给没自带密钥的访客兜底）、`AI_MODEL`（默认 `deepseek-chat`）、`AI_BASE_URL`（可选，换服务商时用）。密钥只在 edge 运行时读取，打包产物里没有。
+
+**任何一路不通都不假装成功。** 缺 key 返回 `service_not_configured`，上游失败返回 `upstream_unavailable`，自带密钥形状不对或被上游拒绝返回 `model_key_invalid` / `model_key_rejected`，前端每一路都有本地兜底并在结果里写明这次为什么没走 AI：点评退回本地 mock 规则、示范退回词卡例句拼接、讲解只切句不给译文、收词按换行与逗号切分只填 `headword`。返回体也不带上游细节（状态码、异常文本、密钥）。
 
 生成类请求（`intake` / `model-text` / `explain` / `feedback`）一次只跑一路：写作屏和词本屏各转各的圈，但请求在 `aiClient.ts` 里排队，谁先点谁先走，不会两路同时打到上游。`gloss` 是短请求，走旁路不排队，点词查释义不会被前面正在生成的长文卡住。
 
@@ -62,13 +65,14 @@
 - **Vite 7 + TypeScript 5.6**，无前端框架：视图是模板字符串 + `escapeHtml` 转义，状态在模块闭包里，改动走重绘；没有虚拟 DOM 与运行时依赖，构建产物就是静态资源。
 - **样式**：`src/style.css` 一套设计令牌（配色/字体/圆角/按钮），`public/assets/ui/cards.css`、`public/assets/motion/motion.css` 是卡片与动效的公共层，字体子集本地化在 `public/assets/fonts/`。
 - **AI 网关**：Deno Function（`functions/index.ts` 入口 + `functions/handler.ts` 全部逻辑），单文件、无框架，按路径尾段路由。
-- **存储**：浏览器 localStorage，无账号、无服务端数据库。
+- **存储**：浏览器 localStorage，无账号、无服务端数据库。每个浏览器只看得见自己的词库与密钥。
 
 ## 目录
 
 ```
 src/
-  main.ts                  # 顶栏与掌握度色带、两屏 hash 路由、跨屏回调的接线
+  main.ts                  # 顶栏与掌握度色带、两屏 hash 路由、页脚模型密钥、跨屏回调的接线
+  modelKey.ts              # 自带模型密钥的读写与尾号显示，值只留在本机浏览器
   types.ts                 # Word / WritingTask / Feedback / PassageLength 契约
   features/words/          # 词本：粘贴收词、手动填词、列表与筛选、词卡学习视图、localStorage
   features/writing/        # 写作：选词出题、两条路径、逐句讲解、点词释义、AI 客户端与降级
@@ -99,7 +103,7 @@ deno run --allow-net --allow-env functions/index.ts   # 有 Deno 时的真实入
 
 ## 部署
 
-站点部署在 Qoder Sites（项目 slug `active-vocab`），`dist/` 为静态产物，`functions/` 为同源 AI 网关，密钥放在站点 Settings 的 Secret `API_KEY` 里。
+站点部署在 Qoder Sites（项目 slug `active-vocab`），`dist/` 为静态产物，`functions/` 为同源 AI 网关，密钥放在站点 Settings 的 Secret `API_KEY` 里。这个 Secret 是兜底：访客在页脚粘了自己的模型密钥时，那次请求用他自己的 key，不消耗站点的额度。
 
 ## 协作约定
 

@@ -27,10 +27,10 @@ function stubUpstream(payload, init = {}) {
   };
 }
 
-function post(path, body) {
+function post(path, body, headers = {}) {
   return new Request(`https://site.example/functions/v1/app/${path}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...headers },
     body: typeof body === 'string' ? body : JSON.stringify(body),
   });
 }
@@ -284,4 +284,36 @@ stubUpstream({
 const cappedGloss = JSON.parse(await (await configured(post('explain', { text: 'One. Two.' }))).text());
 assert.equal(cappedGloss.explanation.glossary.length, 120);
 
-console.log('functions/handler.ts 全部 19 组断言通过');
+// 20. 访客自带密钥：优先于站点密钥、缺站点密钥也能用、脏值与上游拒绝单独报错、绝不回显
+const BYO = 'sk-user-own-key-0001';
+const byoOnly = createHandler({});
+stubUpstream({ text: 'Phones are ubiquitous.', wordIds: ['bare'] });
+const byoModel = await byoOnly(post('model-text', { words: WORDS, prompt: 'x' }, { 'x-model-key': BYO }));
+assert.equal(byoModel.status, 200);
+assert.match(upstreamCalls[0].options.headers.authorization, new RegExp(`^Bearer ${BYO}$`));
+assert.equal((await byoModel.text()).includes(BYO), false);
+// 站点密钥和自带密钥同时存在时，用的是自带的那个。
+stubUpstream({ text: 'Phones are ubiquitous.', wordIds: ['bare'] });
+await configured(post('model-text', { words: WORDS, prompt: 'x' }, { 'x-model-key': BYO }));
+assert.match(upstreamCalls[0].options.headers.authorization, new RegExp(`^Bearer ${BYO}$`));
+// 形状不对的自带密钥在本地就拒掉，一次上游都不打。
+stubUpstream({});
+for (const bad of ['ab', 'sk-bad key', 'k'.repeat(300)]) {
+  const rejected = await configured(post('model-text', { words: WORDS, prompt: 'x' }, { 'x-model-key': bad }));
+  assert.equal(rejected.status, 400);
+  assert.deepEqual(JSON.parse(await rejected.text()), { ok: false, error: 'model_key_invalid' });
+}
+assert.equal(upstreamCalls.length, 0);
+// 上游拒绝自带密钥 → model_key_rejected，且不回落到站点密钥再打一次。
+stubUpstream({}, { status: 401 });
+const keyRejected = await configured(post('model-text', { words: WORDS, prompt: 'x' }, { 'x-model-key': BYO }));
+assert.equal(keyRejected.status, 400);
+assert.deepEqual(JSON.parse(await keyRejected.text()), { ok: false, error: 'model_key_rejected' });
+assert.equal(upstreamCalls.length, 1);
+// 用的是站点密钥时，上游 401 仍然只是网关故障，不泄漏任何 key。
+stubUpstream({}, { status: 401 });
+const siteKeyRejected = await configured(post('model-text', { words: WORDS, prompt: 'x' }));
+assert.equal(siteKeyRejected.status, 502);
+assert.deepEqual(JSON.parse(await siteKeyRejected.text()), { ok: false, error: 'upstream_unavailable' });
+
+console.log('functions/handler.ts 全部 20 组断言通过');

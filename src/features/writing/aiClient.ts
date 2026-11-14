@@ -11,6 +11,7 @@ import type {
   WritingTask,
 } from '../../types';
 import { ApiError, requestJson } from './api';
+import { loadModelKey } from '../../modelKey';
 import { generateMockFeedback } from './mockFeedback';
 import { generateExplanation, generateModelText, type ModelText } from './modelText';
 import { splitSentences } from './passage';
@@ -24,6 +25,8 @@ export interface AiResult<T> {
 
 const FALLBACK_MESSAGES: Record<string, string> = {
   service_not_configured: 'AI 网关未配置密钥',
+  model_key_invalid: '你的模型密钥格式不对（页脚可改）',
+  model_key_rejected: '你的模型密钥被上游拒绝（页脚可换）',
   upstream_unavailable: 'AI 网关调用上游失败',
   invalid_request: 'AI 网关拒绝了请求参数',
   access_denied: '没有访问 AI 网关的权限',
@@ -66,12 +69,16 @@ function queue<T>(call: () => Promise<T>): Promise<T> {
 }
 
 async function post(path: string, payload: unknown): Promise<unknown> {
+  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  // 自带密钥走请求头：不进 URL、不进日志，网关用完这一次就丢。
+  const userKey = loadModelKey();
+  if (userKey) headers['x-model-key'] = userKey;
   const call = () =>
     requestJson(
       `/functions/v1/app/${path}`,
       {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers,
         body: JSON.stringify(payload),
       },
       FALLBACK_MESSAGES,

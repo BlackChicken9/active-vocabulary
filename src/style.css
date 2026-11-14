@@ -622,6 +622,27 @@ html[data-buttons='pill'] .btn--primary:disabled::after {
   font-size: var(--t-label);
 }
 
+/* 模型密钥：状态 + 输入 + 保存收成一行，粘了自己的 key 才多出一个「清除」。 */
+.keyrow {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+
+.keyrow__state {
+  color: var(--muted);
+  font-size: var(--t-label);
+}
+
+.keyrow__state.warn {
+  color: var(--st-training);
+}
+
+.keyrow .keyrow__input {
+  width: 208px;
+}
+
 .intake {
   display: flex;
   flex-direction: column;
