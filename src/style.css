@@ -1159,6 +1159,15 @@ textarea:focus {
   font-weight: 500;
 }
 
+/* 整段视图的译文压在英文下面一档：颜色与字号都退一步，别和原文抢读序。 */
+.passage__zh {
+  margin: var(--s-2) 0 0;
+  padding: 0 var(--s-5);
+  color: var(--muted);
+  font-size: var(--t-small);
+  line-height: 1.85;
+}
+
 .statsline {
   display: flex;
   align-items: center;

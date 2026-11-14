@@ -479,6 +479,22 @@ export function mountWritingPanel(
     }${missing ? ` · 还有 ${missing} 句待讲` : ''}</p>`;
   }
 
+  /** 整段视图也补一段中文：拿逐句译文按序拼，没讲齐就不硬拼半截糊弄读者。 */
+  function wholeTranslation(notes: SentenceNote[], busy: boolean): string {
+    const done = notes.filter((note) => note.zh);
+    if (!done.length) return busy ? '<p class="hint">中文译文生成中…</p>' : '';
+    if (done.length < notes.length) {
+      return `<p class="hint">译文还差 ${notes.length - done.length} 句，切到「逐句讲解」点那一句重试。</p>`;
+    }
+    const joined = done
+      .map((note) => {
+        const zh = note.zh.trim();
+        return /[。！？.!?]$/.test(zh) ? zh : `${zh}。`;
+      })
+      .join('');
+    return `<p class="passage__zh">${escapeHtml(joined)}</p>`;
+  }
+
   function renderModel(words: Word[], spec: PassageLength): string {
     if (busy === 'model') {
       return '<p class="busy"><span class="spinner" aria-hidden="true"></span>AI 正在按题干与篇幅写示范…</p>';
@@ -514,7 +530,10 @@ export function mountWritingPanel(
         </div>
         ${
           passageView === 'whole'
-            ? `<p class="passage__text">${sentenceBody(model.text, [], 'w', keys)}</p>`
+            ? `<p class="passage__text">${sentenceBody(model.text, [], 'w', keys)}</p>${wholeTranslation(
+                notes,
+                explainBusy,
+              )}`
             : `<ol class="sents">${notes.map((note, index) => sentenceCard(note, index, keys)).join('')}</ol>`
         }
         <p class="statsline">${statsLine(model.text, spec)}</p>
@@ -809,6 +828,8 @@ export function mountWritingPanel(
       render();
       const result = await requestModelText(active, loadWords());
       model = result.data;
+      // 新示范一落地就回到「逐句讲解」：译文与结构是这一步的主角，整段留给想连着读的人自己切。
+      passageView = 'sentences';
       modelEngine = result.degraded;
       trained = markTraining(result.data.wordIds);
       busy = null;
