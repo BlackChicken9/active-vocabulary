@@ -1,4 +1,5 @@
 import type { LengthChoice, PassageLength, WritingTask } from '../../types';
+import { splitSentences } from './passage';
 
 export const LENGTH_OPTIONS: { id: LengthChoice; label: string; hint: string }[] = [
   { id: 'auto', label: '自动', hint: '按词数' },
@@ -35,10 +36,7 @@ export function lengthLine(spec: PassageLength): string {
 }
 
 export function countSentences(text: string): number {
-  return text
-    .split(/[.!?]+/)
-    .map((part) => part.trim())
-    .filter(Boolean).length;
+  return splitSentences(text).length;
 }
 
 export type LengthState = 'short' | 'ok' | 'over';

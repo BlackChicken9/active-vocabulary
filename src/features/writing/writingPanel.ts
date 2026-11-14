@@ -1,10 +1,11 @@
-import type { Feedback, LengthChoice, MasteryStatus, PassageLength, Submission, Word, WordUsage, WritingTask } from '../../types';
+import type { Explanation, Feedback, LengthChoice, MasteryStatus, PassageLength, SentenceNote, SentencePart, Submission, Word, WordUsage, WritingTask } from '../../types';
 import { escapeHtml } from '../../escapeHtml';
 import { loadWords } from '../words/wordStore';
-import { requestFeedback, requestModelText } from './aiClient';
+import { requestExplain, requestFeedback, requestModelText } from './aiClient';
 import { importWords } from './intake';
 import { INTAKE_SAMPLE } from './intakeSample';
 import { advanceMastery, markTraining, type MasteryChange } from './masteryUpdate';
+import { lemmaCandidates, roleClass, segmentSentence, splitSentences, tokenize } from './passage';
 import {
   countSentences,
   LENGTH_OPTIONS,
@@ -16,6 +17,7 @@ import {
 } from './passageLength';
 import { applyLength, createTask, MAX_TARGET_WORDS, MIN_TARGET_WORDS, setStatus } from './taskStore';
 import type { ModelText } from './modelText';
+import { createWordPopover } from './wordPopover';
 
 const masteryZh: Record<MasteryStatus, string> = {
   passive: '认识',
@@ -39,7 +41,7 @@ const CHECK = `<span class="word__check" aria-hidden="true"><svg viewBox="0 0 12
 const PATH_COPY: Record<Path, { title: string; text: string; ceiling: MasteryStatus }> = {
   a: {
     title: '读 AI 示范短文',
-    text: '按上面的篇幅现写一段，目标词高亮，看它们在真实句子里怎么搭配。',
+    text: '按上面的篇幅现写一段，逐句给译文与句子结构，点任意单词看释义。',
     ceiling: 'training',
   },
   b: {
@@ -81,13 +83,57 @@ function clampScore(value: number): number {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
-/** 在已转义的正文里把目标词包成 <mark>，headword 只含英文字母，转义后仍是原样。 */
-function highlight(text: string, headwords: string[]): string {
-  let html = escapeHtml(text);
-  for (const headword of headwords) {
-    const safe = escapeHtml(headword).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    html = html.replace(new RegExp(`\\b(${safe})\\b`, 'gi'), '<mark>$1</mark>');
-  }
+/** 目标词在文中常是变位形态，按原形候选判断要不要标成目标词。 */
+function targetKeys(words: Word[]): Set<string> {
+  return new Set(words.flatMap((word) => lemmaCandidates(word.headword)));
+}
+
+function tokenButton(value: string, id: string, scope: string, isTarget: boolean): string {
+  return `<button type="button" class="tok${isTarget ? ' is-target' : ''}" id="${id}" data-term="${escapeHtml(
+    value,
+  )}" data-si="${scope}" tabindex="-1">${escapeHtml(value)}</button>`;
+}
+
+/** 逐词渲染成可点按钮；成分对得上原句时，把同一成分的连续片段包进一个 span 供高亮。 */
+function sentenceBody(
+  sentence: string,
+  parts: SentencePart[],
+  scope: string,
+  keys: Set<string>,
+): string {
+  const segments = segmentSentence(sentence, parts);
+  const roleAt = (start: number, end: number): string | null => {
+    if (!segments) return null;
+    let at = 0;
+    for (const segment of segments) {
+      if (start >= at && end <= at + segment.text.length) {
+        return segment.role ? roleClass(segment.role) : null;
+      }
+      at += segment.text.length;
+    }
+    return null;
+  };
+  let html = '';
+  let open: string | null = null;
+  let pos = 0;
+  tokenize(sentence).forEach((token, index) => {
+    const role = token.word ? roleAt(pos, pos + token.text.length) : open;
+    if (role !== open) {
+      if (open) html += '</span>';
+      if (role) html += `<span class="part" data-role="${role}">`;
+      open = role;
+    }
+    html += token.word
+      ? tokenButton(
+          token.text,
+          `tok-${scope}-${index}`,
+          scope,
+          lemmaCandidates(token.text).some((key) => keys.has(key)),
+        )
+      : escapeHtml(token.text);
+    pos += token.text.length;
+  });
+  if (open) html += '</span>';
   return html;
 }
 
@@ -112,6 +158,22 @@ export function mountWritingPanel(
   let intakeNote: string | null = null;
   let lengthChoice: LengthChoice = 'auto';
   let lengthNote: string | null = null;
+  let explain: Explanation | null = null;
+  let explainBusy = false;
+  let explainEngine: string | null = null;
+  let passageView: 'whole' | 'sentences' = 'sentences';
+  let closedNotes = new Set<number>();
+  let notePending = new Set<number>();
+  let noteError = new Map<number, string>();
+
+  const popover = createWordPopover({
+    words: loadWords,
+    glossary: () => explain?.glossary ?? [],
+    onAdd: () => {
+      onMasteryChanged();
+      render();
+    },
+  });
 
   deskRoot.innerHTML = `
     <div class="desk__head">
@@ -168,6 +230,57 @@ export function mountWritingPanel(
     modelEngine = null;
     feedbackEngine = null;
     lengthNote = null;
+    explain = null;
+    explainBusy = false;
+    explainEngine = null;
+    closedNotes = new Set();
+    notePending = new Set();
+    noteError = new Map();
+    popover.close();
+  }
+
+  /** 示范一落地就先显示，讲解慢一步再补：读短文这件事不该等翻译。 */
+  async function loadExplain(active: WritingTask, source: string): Promise<void> {
+    explainBusy = true;
+    render();
+    const result = await requestExplain(active, source, loadWords());
+    explainBusy = false;
+    // 期间可能换了题或改了篇幅，对不上当前示范的结果直接丢掉。
+    if (task?.id !== active.id || model?.text !== source) return;
+    explain = result.data;
+    explainEngine = result.degraded;
+    noteError = new Map();
+    render();
+  }
+
+  /** 整篇讲解失败或某句缺译文时，可以只重讲这一句：请求小，成功率高。 */
+  async function explainOne(active: WritingTask, index: number): Promise<void> {
+    const note = explain?.sentences[index];
+    if (!note || notePending.has(index)) return;
+    notePending.add(index);
+    noteError.delete(index);
+    render();
+    const result = await requestExplain(active, note.en, loadWords());
+    notePending.delete(index);
+    if (task?.id !== active.id || !explain) return;
+    const fresh = result.data.sentences[0];
+    if (result.degraded || !fresh || (!fresh.zh && !fresh.structure)) {
+      noteError.set(index, result.degraded ?? 'AI 这次没给出讲解');
+      render();
+      return;
+    }
+    const merged = new Map(explain.glossary.map((entry) => [entry.term.toLowerCase(), entry]));
+    for (const entry of result.data.glossary) {
+      if (!merged.has(entry.term.toLowerCase())) merged.set(entry.term.toLowerCase(), entry);
+    }
+    explain = {
+      sentences: explain.sentences.map((item, i) => (i === index ? { ...fresh, en: item.en } : item)),
+      glossary: [...merged.values()],
+    };
+    if (explainEngine && explain.sentences.every((item) => item.zh || item.structure)) {
+      explainEngine = null;
+    }
+    render();
   }
 
   function currentSpec(): PassageLength {
@@ -355,17 +468,141 @@ export function mountWritingPanel(
     });
   }
 
+  function noteCount(): number {
+    if (explain?.sentences.length) return explain.sentences.length;
+    return model ? splitSentences(model.text).length : 0;
+  }
+
+  function notesAllClosed(): boolean {
+    const count = noteCount();
+    return count > 0 && closedNotes.size >= count;
+  }
+
+  function noteBody(note: SentenceNote, index: number): string {
+    if (notePending.has(index)) {
+      return '<p class="busy"><span class="spinner" aria-hidden="true"></span>AI 正在讲这一句…</p>';
+    }
+    const error = noteError.get(index);
+    if (!note.zh && !note.structure) {
+      return `
+        <p class="sent__missing">${
+          explainBusy
+            ? 'AI 正在写这一句的译文与结构…'
+            : error
+              ? `这句讲解没拿到：${escapeHtml(error)}`
+              : '这一句还没有译文与结构。'
+        }</p>
+        <button type="button" class="btn btn--secondary btn--sm" id="note-ask-${index}" ${
+          explainBusy ? 'disabled' : ''
+        }>讲这一句</button>`;
+    }
+    return `
+      ${
+        note.zh
+          ? `<p class="sent__zh"><span class="sent__tag">译</span><span>${escapeHtml(note.zh)}</span></p>`
+          : ''
+      }
+      ${
+        note.structure
+          ? `<p class="sent__struct"><span class="sent__tag">结构</span><span>${escapeHtml(note.structure)}</span></p>`
+          : ''
+      }`;
+  }
+
+  function sentenceCard(note: SentenceNote, index: number, keys: Set<string>): string {
+    const closed = closedNotes.has(index);
+    const roles: string[] = [];
+    for (const part of note.parts) {
+      if (part.role && !roles.includes(part.role)) roles.push(part.role);
+    }
+    return `
+      <li class="sent" id="sent-${index}" data-si="${index}">
+        <div class="sent__top">
+          <span class="sent__no" aria-hidden="true">${String(index + 1).padStart(2, '0')}</span>
+          <p class="sent__en">${sentenceBody(note.en, note.parts, String(index), keys)}</p>
+          <button type="button" class="sent__toggle" id="note-toggle-${index}" data-closed="${closed}"
+            aria-expanded="${!closed}" aria-controls="note-${index}" aria-label="第 ${index + 1} 句讲解">
+            <span class="sent__toggle-t">${closed ? '讲解' : '收起'}</span>
+            <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5"/></svg>
+          </button>
+        </div>
+        <div class="sent__note" id="note-${index}" ${closed ? 'hidden' : ''}>
+          ${noteBody(note, index)}
+          ${
+            roles.length
+              ? `<div class="roles" role="group" aria-label="第 ${index + 1} 句成分">
+                  ${roles
+                    .map(
+                      (role) =>
+                        `<button type="button" class="role-chip" data-role="${roleClass(role)}" aria-pressed="false">
+                          <i class="role-dot" aria-hidden="true"></i>${escapeHtml(role)}
+                        </button>`,
+                    )
+                    .join('')}
+                </div>`
+              : ''
+          }
+        </div>
+      </li>`;
+  }
+
+  function explainLine(): string {
+    if (explainBusy) {
+      return '<p class="busy"><span class="spinner" aria-hidden="true"></span>AI 正在逐句拆解：译文 · 句子结构 · 词汇表…</p>';
+    }
+    if (!explain) return '';
+    const missing = explain.sentences.filter((note) => !note.zh && !note.structure).length;
+    if (explainEngine) {
+      return `<p class="engine">兜底原因：${escapeHtml(explainEngine)}${
+        missing ? '，点该句的「讲这一句」可以单独重试' : ''
+      }</p>`;
+    }
+    return `<p class="engine">讲解来源：AI 网关 · ${
+      explain.glossary.length ? `${explain.glossary.length} 词释义` : '词汇表为空，点词时现查'
+    }${missing ? ` · 还有 ${missing} 句待讲` : ''}</p>`;
+  }
+
   function renderModel(words: Word[], spec: PassageLength): string {
     if (busy === 'model') {
       return '<p class="busy"><span class="spinner" aria-hidden="true"></span>AI 正在按题干与篇幅写示范…</p>';
     }
     if (!model) return '<p class="hint">点上面的 A，按当前篇幅生成一段把目标词用出来的示范。</p>';
-    const headwords = words.filter((w) => model!.wordIds.includes(w.id)).map((w) => w.headword);
+    const active = task!;
+    const marked = words.filter((w) => model!.wordIds.includes(w.id));
+    const keys = targetKeys(
+      marked.length ? marked : words.filter((w) => active.targetWordIds.includes(w.id)),
+    );
+    const notes: SentenceNote[] = explain?.sentences.length
+      ? explain.sentences
+      : splitSentences(model.text).map((en) => ({ en, zh: '', structure: '', parts: [] }));
     return `
       <div class="passage">
-        <p class="passage__text">${highlight(model.text, headwords)}</p>
+        <div class="reader__bar">
+          <div class="seg seg--sm" role="group" aria-label="示范短文视图">
+            <button type="button" class="seg-btn" id="view-whole" aria-pressed="${passageView === 'whole'}">
+              <strong>整段</strong>
+            </button>
+            <button type="button" class="seg-btn" id="view-sentences" aria-pressed="${passageView === 'sentences'}">
+              <strong>逐句讲解</strong>
+            </button>
+          </div>
+          ${
+            passageView === 'sentences'
+              ? `<button type="button" class="btn btn--secondary btn--sm" id="notes-all">${
+                  notesAllClosed() ? '展开全部讲解' : '只看英文'
+                }</button>`
+              : ''
+          }
+          <span class="hint reader__tip">点任意单词看释义</span>
+        </div>
+        ${
+          passageView === 'whole'
+            ? `<p class="passage__text">${sentenceBody(model.text, [], 'w', keys)}</p>`
+            : `<ol class="sents">${notes.map((note, index) => sentenceCard(note, index, keys)).join('')}</ol>`
+        }
         <p class="statsline">${statsLine(model.text, spec)}</p>
         ${engineLine(modelEngine)}
+        ${explainLine()}
         <p class="mastery ${trained.length ? '' : 'none'}">${
           trained.length
             ? `示范已读，掌握度回写：${changeLine(trained)}`
@@ -457,9 +694,9 @@ export function mountWritingPanel(
             <span class="targets__label">目标词</span>
             ${targets
               .map(
-                (w) => `<span class="target"><b>${escapeHtml(w.headword)}</b><span>${escapeHtml(
-                  w.meaningZh.trim() || '释义待补',
-                )}</span></span>`,
+                (w) => `<button type="button" class="target" id="tgt-${w.id}" data-term="${escapeHtml(w.headword)}" data-si="w">
+                  <b>${escapeHtml(w.headword)}</b><span>${escapeHtml(w.meaningZh.trim() || '释义待补')}</span>
+                </button>`,
               )
               .join('')}
           </div>
@@ -503,6 +740,72 @@ export function mountWritingPanel(
     placeIndicator();
     workSlot.innerHTML = workCard(words, spec);
 
+    workSlot.querySelectorAll<HTMLElement>('.sent__en, .passage__text').forEach((scope) => {
+      const first = scope.querySelector<HTMLButtonElement>('.tok');
+      if (first) first.tabIndex = 0;
+    });
+
+    workSlot.querySelector<HTMLButtonElement>('#view-whole')?.addEventListener('click', () => {
+      if (passageView === 'whole') return;
+      passageView = 'whole';
+      render();
+    });
+
+    workSlot.querySelector<HTMLButtonElement>('#view-sentences')?.addEventListener('click', () => {
+      if (passageView === 'sentences') return;
+      passageView = 'sentences';
+      render();
+    });
+
+    workSlot.querySelector<HTMLButtonElement>('#notes-all')?.addEventListener('click', () => {
+      closedNotes = notesAllClosed()
+        ? new Set()
+        : new Set(Array.from({ length: noteCount() }, (_, index) => index));
+      render();
+    });
+
+    // 讲解开合与成分高亮只改这一句的 DOM：整块重绘会把浮层锚点和滚动位置一起弄丢。
+    workSlot.querySelectorAll<HTMLButtonElement>('.sent__toggle').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const index = Number(btn.id.slice('note-toggle-'.length));
+        const closed = !closedNotes.has(index);
+        if (closed) closedNotes.add(index);
+        else closedNotes.delete(index);
+        const note = workSlot.querySelector<HTMLElement>(`#note-${index}`);
+        if (note) note.hidden = closed;
+        btn.setAttribute('aria-expanded', String(!closed));
+        btn.dataset.closed = String(closed);
+        const label = btn.querySelector<HTMLElement>('.sent__toggle-t');
+        if (label) label.textContent = closed ? '讲解' : '收起';
+        const all = workSlot.querySelector<HTMLButtonElement>('#notes-all');
+        if (all) all.textContent = notesAllClosed() ? '展开全部讲解' : '只看英文';
+      });
+    });
+
+    workSlot.querySelectorAll<HTMLButtonElement>('.role-chip').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        const sent = chip.closest<HTMLElement>('.sent');
+        if (!sent) return;
+        const role = chip.dataset.role!;
+        const on = sent.dataset.focusRole !== role;
+        if (on) sent.dataset.focusRole = role;
+        else delete sent.dataset.focusRole;
+        sent.querySelectorAll<HTMLElement>('.part').forEach((part) => {
+          part.dataset.dim = String(on && part.dataset.role !== role);
+        });
+        sent.querySelectorAll<HTMLButtonElement>('.role-chip').forEach((other) => {
+          other.setAttribute('aria-pressed', String(on && other.dataset.role === role));
+        });
+      });
+    });
+
+    workSlot.querySelectorAll<HTMLButtonElement>('[id^="note-ask-"]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (!task) return;
+        void explainOne(task, Number(btn.id.slice('note-ask-'.length)));
+      });
+    });
+
     lengthBar.querySelectorAll<HTMLButtonElement>('[data-length]').forEach((btn) => {
       btn.addEventListener('click', () => {
         if (busy) return;
@@ -517,6 +820,13 @@ export function mountWritingPanel(
           advanced = [];
           modelEngine = null;
           feedbackEngine = null;
+          explain = null;
+          explainBusy = false;
+          explainEngine = null;
+          closedNotes = new Set();
+          notePending = new Set();
+          noteError = new Map();
+          popover.close();
           const label = LENGTH_OPTIONS.find((o) => o.id === choice)?.label ?? choice;
           lengthNote = `篇幅已改为「${label}」（${lengthLine(taskLength(task))}）：示范与点评已清空，你的草稿保留。`;
         }
@@ -586,6 +896,10 @@ export function mountWritingPanel(
       trained = markTraining(result.data.wordIds);
       busy = null;
       onMasteryChanged();
+      render();
+      pathsBox.querySelector<HTMLButtonElement>(`#path-${path}`)?.focus();
+      if (result.data.text.trim()) void loadExplain(active, result.data.text);
+      return;
     }
     render();
     pathsBox.querySelector<HTMLButtonElement>(`#path-${path}`)?.focus();
@@ -595,6 +909,43 @@ export function mountWritingPanel(
     btn.addEventListener('click', () => {
       void pathClick(btn.dataset.path as Path);
     });
+  });
+
+  // 一段短文上百个词，用委托而不是逐词挂监听；重绘换掉节点也不会漏。
+  deskRoot.addEventListener('click', (event) => {
+    const node = event.target instanceof Element ? event.target.closest<HTMLElement>('.tok, .target') : null;
+    const term = node?.dataset.term;
+    if (!node || !term) return;
+    const scope = node.dataset.si ?? 'w';
+    const context =
+      scope === 'w'
+        ? (model?.text ?? '')
+        : (explain?.sentences[Number(scope)]?.en ?? model?.text ?? '');
+    popover.open(node, term, context);
+  });
+
+  /** 一句里的词是一个漫游焦点组：左右键扫词，Tab 不会被迫停一百次。 */
+  deskRoot.addEventListener('keydown', (event) => {
+    const node = event.target;
+    if (!(node instanceof HTMLButtonElement) || !node.classList.contains('tok')) return;
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    const scope = node.closest<HTMLElement>('.sent__en, .passage__text');
+    if (!scope) return;
+    const list = [...scope.querySelectorAll<HTMLButtonElement>('.tok')];
+    const at = list.indexOf(node);
+    const next =
+      event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? list.length - 1
+          : event.key === 'ArrowLeft'
+            ? Math.max(0, at - 1)
+            : Math.min(list.length - 1, at + 1);
+    event.preventDefault();
+    list.forEach((btn, index) => {
+      btn.tabIndex = index === next ? 0 : -1;
+    });
+    list[next]?.focus();
   });
 
   let refocus: { id: string; caret: number | null } | null = null;
@@ -608,6 +959,7 @@ export function mountWritingPanel(
     const words = loadWords();
     renderBank(words);
     renderDesk(words);
+    popover.reanchor();
     refocus = null;
     if (!focusId) return;
     const again = document.getElementById(focusId);

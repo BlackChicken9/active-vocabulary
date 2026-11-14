@@ -191,4 +191,97 @@ const longModel = JSON.parse(await (await configured(post('model-text', {
 }))).text());
 assert.equal(longModel.modelText.text, longText.trim());
 
-console.log('functions/handler.ts 全部 14 组断言通过');
+// 15. explain：按网关自己的分句编号对齐，紧凑词汇表与成分串都要解析出来
+stubUpstream({
+  sentences: [
+    {
+      zh: '跑步帮我减轻压力。',
+      structure: '主语 Running，谓语 helps，宾语 me，不定式作宾补。',
+      marked: '[主语 Running] [谓语 helps] [宾语 me] [补语 alleviate stress]',
+    },
+    { zh: '你可以利用同一个习惯。', structure: '主谓宾结构。', marked: '[主语 You][谓语 can leverage][宾语 the same habit]' },
+  ],
+  glossary: [
+    'running|n.|跑步',
+    'alleviate|v.|减轻',
+    'leverage|v.|利用',
+    'habit|n.|习惯',
+    'running|n.|重复项',
+    'bad|entry',
+    '|v.|缺词头',
+    '中文|n.|不是英文词头',
+    { term: 'stress', pos: 'n.', meaningZh: '压力' },
+  ],
+});
+const explained = JSON.parse(await (await configured(post('explain', {
+  words: WORDS,
+  text: 'Running helps me alleviate stress. You can leverage the same habit.',
+}))).text());
+assert.equal(explained.ok, true);
+assert.deepEqual(explained.explanation.sentences.map((s) => s.en), [
+  'Running helps me alleviate stress.',
+  'You can leverage the same habit.',
+]);
+assert.equal(explained.explanation.sentences[0].zh, '跑步帮我减轻压力。');
+assert.deepEqual(explained.explanation.sentences[0].parts[3], { role: '补语', text: 'alleviate stress' });
+assert.deepEqual(explained.explanation.sentences[1].parts.map((p) => p.role), ['主语', '谓语', '宾语']);
+assert.deepEqual(explained.explanation.glossary.map((g) => g.term), [
+  'running',
+  'alleviate',
+  'leverage',
+  'habit',
+  'stress',
+]);
+let explainBody = JSON.parse(upstreamCalls[0].options.body);
+assert.match(explainBody.messages[1].content, /^1\. Running helps me alleviate stress\.\n2\. You can leverage/);
+assert.match(explainBody.messages[0].content, /必须正好 2 项/);
+assert.equal(explainBody.max_tokens, 6000);
+
+// 16. explain：模型少回一句也不崩，缺的那句留空；全空则收敛为 502
+stubUpstream({ sentences: [{ zh: '只回了第一句' }], glossary: [] });
+const partial = JSON.parse(await (await configured(post('explain', {
+  words: WORDS,
+  text: 'One two three. Four five six.',
+}))).text());
+assert.equal(partial.explanation.sentences.length, 2);
+assert.equal(partial.explanation.sentences[1].zh, '');
+assert.deepEqual(partial.explanation.sentences[1].parts, []);
+stubUpstream({ sentences: [], glossary: [] });
+assert.equal((await configured(post('explain', { words: WORDS, text: 'One. Two.' }))).status, 502);
+stubUpstream({ sentences: [{ zh: '有译文' }] });
+assert.equal((await configured(post('explain', { text: 'One.' }))).status, 200);
+assert.equal((await configured(post('explain', { words: WORDS }))).status, 400);
+assert.equal((await configured(post('explain', { words: WORDS, text: '   ' }))).status, 400);
+
+// 17. explain 句数封顶 12，缩写不切句
+stubUpstream({ sentences: [], glossary: ['word|n.|词'] });
+const many = JSON.parse(await (await configured(post('explain', {
+  text: Array.from({ length: 20 }, (_, i) => `Sentence number ${i} is here.`).join(' '),
+}))).text());
+assert.equal(many.explanation.sentences.length, 12);
+stubUpstream({ sentences: [], glossary: ['word|n.|词'] });
+const abbrev = JSON.parse(await (await configured(post('explain', { text: 'Use e.g. this one. Then stop.' }))).text());
+assert.deepEqual(abbrev.explanation.sentences.map((s) => s.en), ['Use e.g. this one.', 'Then stop.']);
+
+// 18. gloss：查一个词，脏词头被拒，缺释义收敛为 502
+stubUpstream({ term: 'absorbs', pos: 'v.', meaningZh: '吸收' });
+const glossed = JSON.parse(await (await configured(post('gloss', { term: 'absorbs', sentence: 'The ocean absorbs heat.' }))).text());
+assert.deepEqual(glossed.entry, { term: 'absorbs', pos: 'v.', meaningZh: '吸收' });
+assert.equal(JSON.parse(upstreamCalls[0].options.body).max_tokens, 512);
+stubUpstream({ term: '模型乱改的词', meaningZh: '释义' });
+const keptTerm = JSON.parse(await (await configured(post('gloss', { term: 'absorbs' }))).text());
+assert.equal(keptTerm.entry.term, 'absorbs');
+assert.equal((await configured(post('gloss', { term: 'not a word at all!!' }))).status, 400);
+assert.equal((await configured(post('gloss', {}))).status, 400);
+stubUpstream({ term: 'absorbs' });
+assert.equal((await configured(post('gloss', { term: 'absorbs' }))).status, 502);
+
+// 19. 词汇表条数封顶 120
+stubUpstream({
+  sentences: [],
+  glossary: Array.from({ length: 200 }, (_, i) => `word${i}|n.|释义${i}`),
+});
+const cappedGloss = JSON.parse(await (await configured(post('explain', { text: 'One. Two.' }))).text());
+assert.equal(cappedGloss.explanation.glossary.length, 120);
+
+console.log('functions/handler.ts 全部 19 组断言通过');

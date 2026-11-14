@@ -1,4 +1,5 @@
-import type { Word, WritingTask } from '../../types';
+import type { Explanation, Word, WritingTask } from '../../types';
+import { splitSentences } from './passage';
 import { taskLength } from './passageLength';
 
 export interface ModelText {
@@ -44,4 +45,12 @@ export function generateModelText(task: WritingTask, words: Word[]): ModelText {
     sentences.push(`${prev.replace(/[.!?]$/, '')}, and ${last.charAt(0).toLowerCase()}${last.slice(1)}`);
   }
   return { text: sentences.join(' '), wordIds: targets.map((word) => word.id) };
+}
+
+/** 网关不可用时的讲解兜底：句子照样切出来，但绝不编造译文和结构，缺的部分如实留空。 */
+export function generateExplanation(text: string): Explanation {
+  return {
+    sentences: splitSentences(text).map((en) => ({ en, zh: '', structure: '', parts: [] })),
+    glossary: [],
+  };
 }

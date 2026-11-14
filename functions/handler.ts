@@ -17,6 +17,8 @@ const MAX_BODY = 12_000;
 const MAX_TEXT = 2_000;
 const MAX_RAW = 6_000;
 const MAX_CARDS = 30;
+const MAX_GLOSS = 120;
+const MAX_EXPLAIN_SENTENCES = 12;
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -29,11 +31,38 @@ function clip(value: string, max: number): string {
   return value.length > max ? `${value.slice(0, max)}…` : value;
 }
 
-function route(pathname: string): 'feedback' | 'model-text' | 'intake' | null {
+function route(pathname: string): 'feedback' | 'model-text' | 'intake' | 'explain' | 'gloss' | null {
   if (pathname.endsWith('/feedback')) return 'feedback';
   if (pathname.endsWith('/model-text')) return 'model-text';
   if (pathname.endsWith('/intake')) return 'intake';
+  if (pathname.endsWith('/explain')) return 'explain';
+  if (pathname.endsWith('/gloss')) return 'gloss';
   return null;
+}
+
+const ABBREV = /(?:^|\s)(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e|a\.m|p\.m|No|Fig)\.$/i;
+const INITIAL = /(?:^|\s)[A-Z]\.$/;
+
+/** 与 src/features/writing/passage.ts 的切法保持一致：逐句讲解按序号对齐，切法不同译文就会错位。 */
+function splitSentences(text: string): string[] {
+  const clean = text.replace(/\s+/g, ' ').trim();
+  if (!clean) return [];
+  const out: string[] = [];
+  let start = 0;
+  for (let i = 0; i < clean.length; i += 1) {
+    if (!'.!?…'.includes(clean[i])) continue;
+    let end = i + 1;
+    while (end < clean.length && '.!?…'.includes(clean[end])) end += 1;
+    while (end < clean.length && '"\'”’)'.includes(clean[end])) end += 1;
+    if (end < clean.length && clean[end] !== ' ') continue;
+    const piece = clean.slice(start, end);
+    if (ABBREV.test(piece) || INITIAL.test(piece)) continue;
+    out.push(piece.trim());
+    start = end + 1;
+  }
+  const tail = clean.slice(start).trim();
+  if (tail) out.push(tail);
+  return out;
 }
 
 function asString(value: unknown, max = 300): string | null {
@@ -75,7 +104,12 @@ async function readBody(request: Request): Promise<Record<string, unknown> | nul
   }
 }
 
-async function chat(env: GatewayEnv, prompt: string, user: string): Promise<unknown> {
+async function chat(
+  env: GatewayEnv,
+  prompt: string,
+  user: string,
+  options: { maxTokens?: number; timeoutMs?: number } = {},
+): Promise<unknown> {
   const response = await fetch(`${env.AI_BASE_URL ?? DEFAULT_BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -87,13 +121,15 @@ async function chat(env: GatewayEnv, prompt: string, user: string): Promise<unkn
     body: JSON.stringify({
       model: env.AI_MODEL || DEFAULT_MODEL,
       temperature: 0.2,
+      // 默认 4096 会把逐句讲解的 JSON 截断在半句上，讲解这一路显式抬高。
+      max_tokens: options.maxTokens ?? 4096,
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: prompt },
         { role: 'user', content: user },
       ],
     }),
-    signal: AbortSignal.timeout(20_000),
+    signal: AbortSignal.timeout(options.timeoutMs ?? 20_000),
   });
   if (!response.ok) throw new Error(`upstream_${response.status}`);
   const payload = (await response.json()) as { choices?: { message?: { content?: string } }[] };
@@ -192,6 +228,106 @@ function normalizeModelText(data: unknown, words: TargetWord[]) {
   return { text, wordIds: ids.length ? ids : words.map((w) => w.id) };
 }
 
+function explainPrompt(words: TargetWord[], count: number): string {
+  return [
+    '你是英语写作助教，为学习者逐句讲解一段示范短文：翻译、句子结构、生词释义。',
+    '只输出 JSON：{"sentences":[{"zh":"这一句的简体中文翻译","structure":"中文一句话讲清主干与从句","marked":"[主语 ...][谓语 ...][宾语 ...]"}],"glossary":["原文词|词性|中文释义"]}。',
+    `sentences 必须正好 ${count} 项，与下面编号一一对应，不要合并、拆分或改写英文原句。`,
+    'marked 把该句按顺序切成 2~6 段：方括号里先写成分名（主语/谓语/宾语/表语/补语/定语/状语/从句/连接词），空格后原样抄写那一段英文；各段拼起来要能还原整句。',
+    'structure 只讲结构（谁是主语、谓语是什么、哪个是从句、修饰谁），不要重复译文，不要泛泛而谈。',
+    'glossary 覆盖文中所有实词（名词、动词、形容词、副词）和固定搭配，用文中出现的形态，最多 120 条，释义 12 字以内；目标词也要给，释义与词卡一致。',
+    '全部中文用简体，不要输出 Markdown 或额外解释。',
+    words.length ? '目标词表：' : '',
+    words.length ? describe(words) : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+/** 与前端 parseMarked 同一套写法：[成分 英文]，模型偶尔用 | 分隔也认。 */
+function parseMarked(value: unknown): { text: string; role: string }[] {
+  const marked = asString(value, 900);
+  if (!marked) return [];
+  const out: { text: string; role: string }[] = [];
+  for (const match of marked.matchAll(/\[([^\]\s|]{1,8})[|\s]\s*([^\]]+)\]/g)) {
+    const text = clip(match[2].trim(), 160);
+    if (text) out.push({ role: match[1], text });
+    if (out.length >= 12) break;
+  }
+  return out;
+}
+
+const GLOSS_TERM_OK = /^[A-Za-z](?:[A-Za-z0-9'’ -]{0,38}[A-Za-z0-9'’.])?$/;
+
+/** 词汇表既接受 "词|词性|释义" 紧凑串，也接受对象；脏条目丢掉，不让整次讲解失败。 */
+function normalizeGlossary(value: unknown): { term: string; pos: string; meaningZh: string }[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const out: { term: string; pos: string; meaningZh: string }[] = [];
+  for (const item of value) {
+    let term = '';
+    let pos = '';
+    let meaningZh = '';
+    if (typeof item === 'string') {
+      const parts = item.split('|');
+      term = (parts[0] ?? '').trim();
+      pos = (parts[1] ?? '').trim();
+      meaningZh = (parts.slice(2).join('|') ?? '').trim();
+    } else if (item && typeof item === 'object') {
+      const record = item as Record<string, unknown>;
+      term = asString(record.term, 48) ?? '';
+      pos = asString(record.pos, 16) ?? '';
+      meaningZh = asString(record.meaningZh, 60) ?? '';
+    }
+    if (!term || !meaningZh || !GLOSS_TERM_OK.test(term)) continue;
+    const key = term.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ term, pos: clip(pos, 16), meaningZh: clip(meaningZh, 60) });
+    if (out.length >= MAX_GLOSS) break;
+  }
+  return out;
+}
+
+function normalizeExplanation(data: unknown, sentences: string[]) {
+  const record = (data ?? {}) as Record<string, unknown>;
+  const raw = Array.isArray(record.sentences) ? record.sentences : [];
+  const notes = sentences.map((en, index) => {
+    const item = (raw[index] ?? {}) as Record<string, unknown>;
+    return {
+      en,
+      zh: asString(item.zh, 400) ?? '',
+      structure: asString(item.structure, 400) ?? '',
+      parts: parseMarked(item.marked),
+    };
+  });
+  const glossary = normalizeGlossary(record.glossary);
+  if (!glossary.length && !notes.some((note) => note.zh || note.structure)) {
+    throw new Error('upstream_empty');
+  }
+  return { sentences: notes, glossary };
+}
+
+function glossPrompt(): string {
+  return [
+    '你是英语学习词典。给出这个词在给定句子语境下的中文释义。',
+    '只输出 JSON：{"term":"词头（原形）","pos":"词性，如 v. / n. / adj. / 短语","meaningZh":"简体中文释义，20 字以内，贴合该句语境"}。',
+    '不要输出例句、解释或 Markdown。',
+  ].join('\n');
+}
+
+function normalizeGloss(data: unknown, term: string) {
+  const record = (data ?? {}) as Record<string, unknown>;
+  const meaningZh = asString(record.meaningZh, 80);
+  if (!meaningZh) throw new Error('upstream_empty');
+  const head = asString(record.term, 48);
+  return {
+    term: head && GLOSS_TERM_OK.test(head) ? head : term,
+    pos: asString(record.pos, 16) ?? '',
+    meaningZh,
+  };
+}
+
 function intakePrompt(): string {
   return [
     '你是英语词卡整理助手。用户会粘贴任意格式的内容：可能只是一串单词，也可能是带释义、派生词和例句的笔记。',
@@ -275,6 +411,43 @@ export function createHandler(env: GatewayEnv = {}) {
       if (!raw) return json({ ok: false, error: 'invalid_request' }, 400);
       try {
         return json({ ok: true, ...normalizeIntake(await chat(env, intakePrompt(), raw)) });
+      } catch {
+        return json({ ok: false, error: 'upstream_unavailable' }, 502);
+      }
+    }
+
+    if (path === 'gloss') {
+      const term = asString(body.term, 48);
+      if (!term || !GLOSS_TERM_OK.test(term)) return json({ ok: false, error: 'invalid_request' }, 400);
+      const sentence = asString(body.sentence, 600) ?? '';
+      try {
+        const entry = normalizeGloss(
+          await chat(env, glossPrompt(), `词：${term}\n所在句子：${sentence}`, { maxTokens: 512 }),
+          term,
+        );
+        return json({ ok: true, entry });
+      } catch {
+        return json({ ok: false, error: 'upstream_unavailable' }, 502);
+      }
+    }
+
+    if (path === 'explain') {
+      const text = asString(body.text, MAX_TEXT);
+      if (!text) return json({ ok: false, error: 'invalid_request' }, 400);
+      const sentences = splitSentences(text).slice(0, MAX_EXPLAIN_SENTENCES);
+      if (!sentences.length) return json({ ok: false, error: 'invalid_request' }, 400);
+      // 讲解只把目标词当释义参考，词表缺失也能讲。
+      const words = parseWords(body.words) ?? [];
+      const numbered = sentences.map((sentence, index) => `${index + 1}. ${sentence}`).join('\n');
+      try {
+        const explanation = normalizeExplanation(
+          await chat(env, explainPrompt(words, sentences.length), numbered, {
+            maxTokens: 6_000,
+            timeoutMs: 45_000,
+          }),
+          sentences,
+        );
+        return json({ ok: true, explanation });
       } catch {
         return json({ ok: false, error: 'upstream_unavailable' }, 502);
       }

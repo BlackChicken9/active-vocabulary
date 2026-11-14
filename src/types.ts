@@ -27,6 +27,31 @@ export interface PassageLength {
   maxWords: number;
 }
 
+/** 句子里的一个成分：text 必须是原句里连续的一段，前端据此上色。 */
+export interface SentencePart {
+  text: string;
+  role: string;
+}
+
+export interface SentenceNote {
+  en: string;
+  zh: string;
+  structure: string;
+  parts: SentencePart[];
+}
+
+/** 示范短文里的一个词：term 用原文形态，点词时按它查释义。 */
+export interface GlossEntry {
+  term: string;
+  pos: string;
+  meaningZh: string;
+}
+
+export interface Explanation {
+  sentences: SentenceNote[];
+  glossary: GlossEntry[];
+}
+
 export interface WritingTask {
   id: string;
   title: string;
