@@ -1993,13 +1993,6 @@ textarea:focus {
   white-space: nowrap;
 }
 
-.saved__meta {
-  color: var(--muted);
-  font-size: var(--t-label);
-  font-variant-numeric: tabular-nums;
-}
-
-/* 列表行里的目标词：静态标签，不能长得像写作屏那颗可以点的 .target。 */
 .saved__body {
   padding: 0 0 var(--s-4);
 }

@@ -22,13 +22,6 @@ let confirmId: string | null = null;
 let analyzing: string | null = null;
 const analyzeNote = new Map<string, string>();
 
-function day(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '';
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
 /** 成分对得上原句就按写作屏同一套色带上色，对不上只留文字，绝不猜位置。 */
 function enLine(note: SentenceNote): string {
   const segments = segmentSentence(note.en, note.parts);
@@ -117,9 +110,6 @@ function row(item: SavedPassage): string {
       <div class="saved__top">
         <span class="badge">${item.kind === 'model' ? 'AI 示范' : '我的习作'}</span>
         <span class="saved__title">${escapeHtml(passageName(item))}</span>
-        <span class="saved__meta">${escapeHtml(item.lengthLabel)} · ${day(item.savedAt)}${
-          item.explanation ? ' · 已带讲解' : ''
-        }</span>
         ${
           askable
             ? `<button type="button" class="btn btn--sm btn--secondary" id="saved-ask-${item.id}" ${
