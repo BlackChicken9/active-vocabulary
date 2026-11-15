@@ -2175,9 +2175,9 @@ textarea:focus {
 
 .layout.layout--view {
   padding-top: var(--s-4);
-  /* 页面是纵向弹柱：视图吃掉页脚以上的全部剩余高，选词栏的「撑到底」就有了确定的边界；
-     底部只留一线呼吸，卡尽量贴住页脚那条截止线。 */
-  padding-bottom: var(--s-2);
+  /* 页面是纵向弹柱：页脚线始终压在屏幕最底端，视图吃掉其上的剩余高；
+     这里的底部留白就是两卡与那条截止线之间的呼吸距离，别压太近。 */
+  padding-bottom: var(--s-8);
   flex: 1 1 auto;
   min-height: 0;
 }
