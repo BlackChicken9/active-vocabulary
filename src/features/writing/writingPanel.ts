@@ -565,6 +565,11 @@ export function mountWritingPanel(
               )}</p>${wholeTranslation(notes)}</div>`
             : `<ol class="sents">${notes.map((note, index) => sentenceCard(note, index, keys)).join('')}</ol>`
         }
+        ${
+          explainBusy
+            ? '<p class="busy"><span class="spinner" aria-hidden="true"></span>AI 正在逐句翻译讲解…</p>'
+            : ''
+        }
         ${trained.length ? `<p class="mastery">示范已读，掌握度回写：${changeLine(trained)}</p>` : ''}
         ${engineLine(modelEngine)}
       </div>`;
