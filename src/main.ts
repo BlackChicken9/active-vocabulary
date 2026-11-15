@@ -52,17 +52,9 @@ app.innerHTML = `
       </div>
     </nav>
   </header>
-  <main class="layout layout--view layout--write" id="view-write">
-    <div class="write-intro">
-      <div>
-        <span class="write-intro__index">WRITING / 01</span>
-        <h2 id="desk-h">限定写作</h2>
-        <p>选篇幅，再点 A 读示范或点 B 自己写。题目会跟着目标词变化。</p>
-      </div>
-      <span class="write-intro__note">ACTIVE USE</span>
-    </div>
+  <main class="layout layout--view layout--write" id="view-write" data-rail="词汇 · 写作练习">
     <aside class="card bank m-nolift" id="bank" aria-labelledby="bank-h"></aside>
-    <section class="desk" id="desk" aria-labelledby="desk-h" tabindex="-1"></section>
+    <section class="desk" id="desk" aria-label="限定写作" tabindex="-1"></section>
   </main>
   <main class="layout layout--view layout--single" id="view-words" hidden>
     <section class="card wb m-nolift" id="words-panel" tabindex="-1" aria-labelledby="wb-h"></section>
