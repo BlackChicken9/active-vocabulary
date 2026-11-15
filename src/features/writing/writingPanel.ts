@@ -495,17 +495,6 @@ export function mountWritingPanel(
       </li>`;
   }
 
-  function explainLine(): string {
-    if (explainBusy) {
-      return '<p class="busy"><span class="spinner" aria-hidden="true"></span>AI 正在逐句拆解…</p>';
-    }
-    if (!explain || !explainEngine) return '';
-    const missing = explain.sentences.filter((note) => !note.zh && !note.structure).length;
-    return `<p class="engine">兜底原因：${escapeHtml(explainEngine)}${
-      missing ? '，点该句的「讲这一句」可以单独重试' : ''
-    }</p>`;
-  }
-
   /** 整段的中文由逐句译文按序拼；没讲齐就是空，显示和保存都不拼半截糊弄读者。 */
   function joinedTranslation(notes: SentenceNote[]): string {
     const done = notes.filter((note) => note.zh);
@@ -571,7 +560,6 @@ export function mountWritingPanel(
             : `<ol class="sents">${notes.map((note, index) => sentenceCard(note, index, keys)).join('')}</ol>`
         }
         <p class="statsline">${statsLine(model.text, modelLength ?? spec)}</p>
-        ${explainLine()}
         ${trained.length ? `<p class="mastery">示范已读，掌握度回写：${changeLine(trained)}</p>` : ''}
         ${engineLine(modelEngine)}
       </div>`;
