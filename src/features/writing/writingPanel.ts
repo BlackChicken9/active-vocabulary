@@ -148,6 +148,8 @@ export function mountWritingPanel(
   let query = '';
   let mode: Mode = 'self';
   let model: ModelText | null = null;
+  // 生成失败时如实把原因摆出来；不拿拼凑文本冒充示范。
+  let modelError: string | null = null;
   // 示范是按哪一档篇幅写的：改了篇幅，句数/词数仍按当时那档判断，不然会平白显示「偏长」。
   let modelLength: PassageLength | null = null;
   let trained: MasteryChange[] = [];
@@ -222,6 +224,7 @@ export function mountWritingPanel(
 
   function resetOutput(): void {
     model = null;
+    modelError = null;
     modelLength = null;
     trained = [];
     feedback = null;
@@ -520,7 +523,9 @@ export function mountWritingPanel(
     if (busy === 'model') {
       return '<p class="busy"><span class="spinner" aria-hidden="true"></span>AI 正在写示范…</p>';
     }
-    if (!model) return '';
+    if (!model) {
+      return modelError ? `<p class="hint warn">没拿到 AI 示范：${escapeHtml(modelError)}</p>` : '';
+    }
     const active = task!;
     const marked = words.filter((w) => model!.wordIds.includes(w.id));
     const keys = targetKeys(
@@ -922,13 +927,23 @@ export function mountWritingPanel(
       busy = 'model';
       render();
       const result = await requestModelText(active, loadWords());
+      busy = null;
+      gatewayModel = result.model;
+      trialLeft = result.trialLeft ?? null;
+      if (!result.data.text.trim()) {
+        model = null;
+        modelLength = null;
+        modelError = result.degraded ?? 'AI 这次没有给出示范';
+        render();
+        pathsBox.querySelector<HTMLButtonElement>(`#path-${path}`)?.focus();
+        return;
+      }
+      modelError = null;
       model = result.data;
       modelLength = taskLength(active);
       // 新示范一落地先看整段：连着把这段话读完，再切「逐句讲解」逐句拆。
       passageView = 'whole';
       modelEngine = result.degraded;
-      gatewayModel = result.model;
-      trialLeft = result.trialLeft ?? null;
       trained = markTraining(result.data.wordIds);
       busy = null;
       onMasteryChanged();
