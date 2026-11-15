@@ -3,9 +3,9 @@ import { splitSentences } from './passage';
 
 export const LENGTH_OPTIONS: { id: LengthChoice; label: string; hint: string }[] = [
   { id: 'auto', label: '自动', hint: '按词数' },
-  { id: 'short', label: '简短', hint: '2~3 句' },
-  { id: 'medium', label: '适中', hint: '4~6 句' },
-  { id: 'long', label: '详尽', hint: '7~10 句' },
+  { id: 'short', label: '短', hint: '2~3 句' },
+  { id: 'medium', label: '中', hint: '4~6 句' },
+  { id: 'long', label: '长', hint: '7~10 句' },
 ];
 
 const PRESETS: Record<Exclude<LengthChoice, 'auto'>, PassageLength> = {

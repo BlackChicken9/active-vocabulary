@@ -9,8 +9,6 @@ export interface Word {
   id: string;
   headword: string;
   pos?: string;
-  ipa?: string;
-  definitionEn?: string;
   meaningZh: string;
   examples: string[];
   collocations: Collocation[];

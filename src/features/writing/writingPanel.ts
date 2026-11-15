@@ -48,10 +48,10 @@ const PATH_COPY: Record<Path, { title: string; text: string; ceiling: MasterySta
 };
 
 const LENGTH_EN: Record<LengthChoice, string> = {
-  auto: 'Auto',
-  short: 'Short',
-  medium: 'Medium',
-  long: 'Long',
+  auto: 'AUTO',
+  short: 'SHORT',
+  medium: 'MEDIUM',
+  long: 'LONG',
 };
 
 function pathButton(path: Path): string {
@@ -193,7 +193,7 @@ export function mountWritingPanel(
     <div class="card setup m-nolift">
       <div id="lengthbar"></div>
       <div class="paths-block">
-        <p class="control-label">A / B Choice</p>
+        <p class="control-label">练习方式</p>
         <div class="paths" id="paths" data-active="none" role="group" aria-label="两条练习路径">
           <span class="m-tab-ind" aria-hidden="true"></span>
           ${pathButton('a')}
@@ -378,46 +378,36 @@ export function mountWritingPanel(
     const on = selected.includes(word.id);
     const disabled = busy !== null || (selected.length >= MAX_TARGET_WORDS && !on);
     const meaning = word.meaningZh.trim();
-    const definition = word.definitionEn?.trim() || meaning;
-    const example = word.examples[0]?.trim() ?? '';
-    const phrase = word.collocations[0]?.phrase.trim() ?? '';
     return `
       <button type="button" class="pick" id="w-${word.id}" data-id="${word.id}"
         aria-pressed="${on}" ${disabled ? 'disabled' : ''}>
-        <span class="pick__top">
-          <span class="pick__hw">${escapeHtml(word.headword)}</span>
-          <span class="pick__meta">${word.ipa ? `<i>${escapeHtml(word.ipa)}</i>` : ''}${word.pos ? `<b>${escapeHtml(word.pos)}</b>` : ''}</span>
-        </span>
-        <span class="pick__zh${definition ? '' : ' empty'}">${escapeHtml(definition || '释义待补')}</span>
-        ${phrase ? `<span class="pick__phrase">${escapeHtml(phrase)}</span>` : ''}
-        ${example ? `<span class="pick__example">${escapeHtml(example)}</span>` : ''}
+        <i class="dot ${word.mastery}" aria-hidden="true"></i>
+        <span class="pick__hw">${escapeHtml(word.headword)}</span>
+        <span class="pick__zh${meaning ? '' : ' empty'}">${escapeHtml(meaning || '释义待补')}</span>
         <span class="sr-only">${masteryZh[word.mastery]}</span>
       </button>`;
   }
 
   function renderPick(words: Word[]): void {
     bankRoot.innerHTML = `
-      <div class="bank-wordmark">
-        <span>VOCABULARY</span>
-        <small>PRACTICE TOOL</small>
-        <em>主动词库</em>
+      <div class="bank__head">
+        <div>
+          <span class="section-index">01 / TARGETS</span>
+          <h2 id="bank-h"><span class="section-en">LEXICON</span><span class="section-zh">本次目标词</span></h2>
+        </div>
+        <span class="bank__count">词本 ${words.length} 词</span>
       </div>
-      <h2 class="sr-only" id="bank-h">本次目标词</h2>
-      <div class="bank-progress">
-        <span>Practice Progress</span>
-        <b>${selected.length} / ${MAX_TARGET_WORDS}</b>
-      </div>
-      <p class="sub">选择 ${MIN_TARGET_WORDS}~${MAX_TARGET_WORDS} 个词 · 词本 ${words.length} 词</p>
+      <p class="sub">勾 ${MIN_TARGET_WORDS}~${MAX_TARGET_WORDS} 个词，右侧据此出题。</p>
       ${
         words.length
           ? `<div class="pickrow">${words.map(wordPick).join('')}</div>
              <div class="bank__foot">
-               <button type="button" class="bank-link" id="open-words">词本</button>
-               <button type="button" class="bank-link" id="open-saved">习作集</button>
+               <p class="hint">已选 ${selected.length}/${MAX_TARGET_WORDS} · 掌握度只升不降</p>
+               <button type="button" class="btn btn--secondary btn--sm" id="open-words">去词本收词</button>
              </div>`
           : `<div class="pickrow empty">
                <p class="hint">词本还是空的，先去词本粘一段正在背的笔记收词。</p>
-               <button type="button" class="bank-link" id="open-words">去词本收词</button>
+               <button type="button" class="btn btn--primary btn--sm" id="open-words">去词本收词</button>
              </div>`
       }`;
 
@@ -432,9 +422,6 @@ export function mountWritingPanel(
 
     bankRoot.querySelectorAll<HTMLButtonElement>('#open-words').forEach((btn) => {
       btn.addEventListener('click', () => onOpenWords());
-    });
-    bankRoot.querySelectorAll<HTMLButtonElement>('#open-saved').forEach((btn) => {
-      btn.addEventListener('click', () => onOpenSaved());
     });
   }
 
@@ -649,13 +636,10 @@ export function mountWritingPanel(
     return `
       <div class="editor">
         <p class="sub">写 ${lengthLine(spec)}，把 ${task?.targetWordIds.length ?? 0} 个目标词都用出来即可提交。</p>
-        <div class="editor__meta">
-          <span>字符统计</span>
-          <span id="count">${statsLine(draftText, spec)}</span>
-        </div>
         <label class="hint" for="draft"><b>DRAFT</b> / 你的段落</label>
         <textarea id="draft" rows="${Math.min(8, Math.max(3, spec.maxSentences))}" placeholder="按篇幅写英文，把目标词用进去…">${escapeHtml(draftText)}</textarea>
         <div class="editor__row">
+          <span class="hint" id="count">${statsLine(draftText, spec)}</span>
           <button type="button" class="btn btn--primary" id="submit" ${busy === 'self' ? 'disabled' : ''}>${
             busy === 'self' ? 'AI 正在点评…' : '提交并获取反馈'
           }</button>
@@ -756,19 +740,19 @@ export function mountWritingPanel(
     if (!task) {
       return `
         <button class="btn btn--primary btn--start" id="start-session" type="button" ${enough ? '' : 'disabled'}>
-          ${enough ? '开始练习' : `先选 ${MIN_TARGET_WORDS} 个词`}
+          ${enough ? `开始练习 · ${mode === 'model' ? '读示范' : '自己写'}` : `先选 ${MIN_TARGET_WORDS} 个词`}
         </button>
         <span class="setup__count">${selected.length} / ${MAX_TARGET_WORDS}</span>`;
     }
     if (staleSelection) {
       return `
-        <button class="btn btn--primary btn--start" id="start-session" type="button">Begin New Practice</button>
+        <button class="btn btn--primary btn--start" id="start-session" type="button">按新词开始</button>
         <span class="setup__count">${selected.length} / ${MAX_TARGET_WORDS}</span>`;
     }
     if (mode === 'model' && (!model || staleModel)) {
       return `
         <button class="btn btn--primary btn--start" id="start-session" type="button">
-          ${model ? 'Generate New Model' : 'Generate Model'}
+          ${model ? '按新篇幅生成' : '生成示范'}
         </button>
         <span class="setup__count">${selected.length} / ${MAX_TARGET_WORDS}</span>`;
     }
