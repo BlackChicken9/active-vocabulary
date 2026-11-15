@@ -191,6 +191,7 @@ export function mountWritingPanel(
         ${pathButton('b')}
       </div>
       <p class="hint path-hint" id="path-hint"></p>
+      <p class="hint busy-line" id="busy-line" hidden></p>
     </div>
     <div id="work-slot"></div>`;
 
@@ -677,6 +678,13 @@ export function mountWritingPanel(
     lengthBar.innerHTML = lengthBlock();
     pathHint.textContent = pathHintLine();
     pathHint.hidden = !pathHint.textContent;
+    // 生成要 10~30 秒，A/B 旁边必须有一颗看得见的转圈，别让用户以为点了没反应。
+    const busyLine = deskRoot.querySelector<HTMLElement>('#busy-line');
+    if (busyLine) {
+      if (busy === 'model') busyLine.innerHTML = '<span class="spinner" aria-hidden="true"></span>AI 正在生成示范…';
+      else if (busy === 'self') busyLine.innerHTML = '<span class="spinner" aria-hidden="true"></span>AI 正在点评…';
+      else busyLine.hidden = true;
+    }
     pathsBox.dataset.active = task ? (mode === 'model' ? 'a' : 'b') : 'none';
     const pathsDisabled = busy !== null || (!task && selected.length < MIN_TARGET_WORDS);
     pathsBox.querySelectorAll<HTMLButtonElement>('.path').forEach((btn) => {
