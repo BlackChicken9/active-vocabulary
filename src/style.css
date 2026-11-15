@@ -2559,9 +2559,7 @@ textarea:focus {
   }
 
   .pickrow {
-    /* 窄屏词本整列铺开接着往下排，不塞在小框里内滚；点 A/B 会跳到下面的结果区。 */
-    max-height: none;
-    overflow: visible;
+    max-height: 148px;
   }
 }
 
@@ -3000,10 +2998,12 @@ textarea:focus {
 }
 
 /* Mobile layout lock: the old two-column segmented rule must not split the
-   three main views, and the writing grid must stay in a single visual column. */
+   three main views, and the writing grid must stay in a single visual column.
+   :not([hidden]) 必须带着——否则 display:grid !important 会盖掉 [hidden]，
+   切到词本/习作集时写作屏还叠在上面，用户要滚过整个写作页才能看到目标屏。 */
 @media (max-width: 639px) {
-  #view-write.layout,
-  #view-write.layout.layout--view {
+  #view-write:not([hidden]).layout,
+  #view-write:not([hidden]).layout.layout--view {
     display: grid !important;
     grid-template-columns: minmax(0, 1fr) !important;
     grid-auto-rows: max-content !important;
@@ -3013,17 +3013,17 @@ textarea:focus {
     padding-top: 12px !important;
   }
 
-  #view-write #bank,
-  #view-write .desk {
+  #view-write:not([hidden]) #bank,
+  #view-write:not([hidden]) .desk {
     grid-column: 1 !important;
     margin-top: 0 !important;
   }
 
-  #view-write #bank {
+  #view-write:not([hidden]) #bank {
     order: 1;
   }
 
-  #view-write .desk {
+  #view-write:not([hidden]) .desk {
     order: 2;
   }
 
