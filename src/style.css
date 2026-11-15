@@ -540,14 +540,13 @@ html[data-buttons='pill'] .btn--primary:disabled::after {
   min-width: 0;
 }
 
-/* 品牌记号：蘸水笔尖（铁胆墨的源头），单色 mask，跟 --font-display 的衬线字重同一条视觉线。 */
+/* 品牌记号：铁胆红底上的 A 字，和 favicon 使用同一个几何。 */
 .mark {
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   flex: none;
-  background: var(--accent);
-  -webkit-mask: url("/assets/ui/mark.svg") center / contain no-repeat;
-  mask: url("/assets/ui/mark.svg") center / contain no-repeat;
+  border-radius: 4px;
+  background: url("/favicon.svg") center / contain no-repeat;
 }
 
 .brand__name {
@@ -2798,5 +2797,281 @@ textarea:focus {
 
   .wcard {
     padding: var(--s-4);
+  }
+}
+
+/* Mobile focus pass: one compact masthead, one row of navigation, and only
+   the controls needed for the current writing step. */
+@media (max-width: 639px) {
+  :root {
+    --gut: 12px;
+    --nav: 56px;
+  }
+
+  .topbar__in,
+  .viewnav__in,
+  .layout,
+  .foot__in {
+    width: calc(100% - 24px);
+  }
+
+  .topbar__in {
+    gap: 8px;
+  }
+
+  .brand {
+    flex: 1;
+    min-width: 0;
+    gap: 8px;
+  }
+
+  .mark {
+    width: 26px;
+    height: 26px;
+    border-radius: 4px;
+  }
+
+  .brand__name {
+    overflow: hidden;
+    font-size: 16px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .brand__line,
+  .tally__legend {
+    display: none;
+  }
+
+  .tally {
+    flex: 0 0 auto;
+  }
+
+  .tally__bar {
+    width: 60px;
+    height: 6px;
+  }
+
+  .viewnav {
+    padding-top: var(--nav);
+    padding-bottom: 0;
+  }
+
+  .viewnav__in {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .viewnav .seg-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    min-height: 52px;
+    padding: 8px 6px;
+    border: 0;
+    border-right: 1px solid var(--line);
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    text-align: center;
+  }
+
+  .viewnav .seg-btn:first-child {
+    border-left: 1px solid var(--line);
+  }
+
+  .viewnav .seg-btn strong {
+    overflow: hidden;
+    font-size: 15px;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .viewnav .seg-btn small {
+    display: none;
+  }
+
+  .viewnav .seg-btn[aria-pressed='true'] {
+    border-bottom-color: var(--accent);
+    background: var(--raised);
+  }
+
+  .layout,
+  .layout.layout--view {
+    padding-top: 12px;
+    padding-bottom: 32px;
+  }
+
+  .desk__head {
+    display: flex;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+    padding: 2px 0 12px;
+  }
+
+  .desk__head h2 {
+    font-size: 25px;
+  }
+
+  .desk__head .sub {
+    max-width: none;
+    margin: 0;
+    flex: 0 0 auto;
+    font-size: 12px;
+    line-height: 1.5;
+    text-align: left;
+  }
+
+  .card.bank,
+  .card.work,
+  .card.setup {
+    padding: 16px;
+    border-radius: 3px;
+  }
+
+  .bank__head h2 {
+    font-size: 22px;
+  }
+
+  .bank__head {
+    align-items: flex-start;
+  }
+
+  .bank__count {
+    padding-top: 3px;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .pickrow.empty {
+    gap: 12px;
+  }
+
+  .pickrow.empty .hint {
+    font-size: 12px;
+  }
+
+  .lengthbar__top {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .lengthbar__label {
+    font-size: 12px;
+  }
+
+  .seg {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .seg-btn {
+    min-height: 48px;
+  }
+
+  .paths {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .card.path {
+    grid-template-columns: 34px minmax(0, 1fr) 14px;
+    min-height: 64px;
+    padding: 10px 12px;
+    gap: 10px;
+  }
+
+  .path__key {
+    width: 32px;
+    height: 32px;
+  }
+
+  .path__title {
+    font-size: 16px;
+  }
+
+  .path__text,
+  .path__ceil,
+  .path .m-arrow {
+    display: none;
+  }
+
+  .path-hint {
+    min-height: 0;
+    font-size: 11px;
+  }
+
+  .card.work:has(.ladder) {
+    display: none;
+  }
+
+  .foot {
+    margin-top: 20px;
+    padding: 18px 0 24px;
+  }
+
+  .foot__in {
+    gap: 10px;
+    font-size: 11px;
+    line-height: 1.55;
+  }
+
+  .keyrow {
+    width: 100%;
+  }
+
+  .keyrow .keyrow__input {
+    flex: 1 1 150px;
+    width: auto;
+  }
+
+  .keyrow .btn--sm {
+    height: 44px;
+  }
+}
+
+/* Mobile layout lock: the old two-column segmented rule must not split the
+   three main views, and the writing grid must stay in a single visual column. */
+@media (max-width: 639px) {
+  #view-write.layout,
+  #view-write.layout.layout--view {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-auto-rows: max-content !important;
+    align-content: start !important;
+    gap: 16px !important;
+    align-items: start !important;
+    padding-top: 12px !important;
+  }
+
+  #view-write .desk__head,
+  #view-write #bank,
+  #view-write .desk {
+    grid-column: 1 !important;
+    margin-top: 0 !important;
+  }
+
+  #view-write .desk__head {
+    order: 0;
+  }
+
+  #view-write #bank {
+    order: 1;
+  }
+
+  #view-write .desk {
+    order: 2;
+  }
+
+  .viewnav .seg {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 0 !important;
+    width: 100% !important;
   }
 }
