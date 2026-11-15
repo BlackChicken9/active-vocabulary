@@ -24,7 +24,6 @@ app.innerHTML = `
       <div class="brand">
         <span class="mark" aria-hidden="true"></span>
         <h1 class="brand__name">主动词库</h1>
-        <span class="brand__line">把认识的词练成会用的词</span>
       </div>
       <div class="tally" id="tally" aria-live="polite" aria-label="词库掌握度统计"></div>
     </div>
@@ -44,7 +43,7 @@ app.innerHTML = `
   </nav>
   <main class="layout layout--view" id="view-write">
     <aside class="card bank m-nolift" id="bank" aria-labelledby="bank-h"></aside>
-    <section class="desk" id="desk" aria-labelledby="desk-h" tabindex="-1"></section>
+    <section class="desk" id="desk" aria-label="写作台" tabindex="-1"></section>
   </main>
   <main class="layout layout--view layout--single" id="view-words" hidden>
     <section class="card wb m-nolift" id="words-panel" tabindex="-1" aria-labelledby="wb-h"></section>
@@ -54,7 +53,7 @@ app.innerHTML = `
   </main>
   <footer class="foot">
     <div class="foot__in">
-      <span>词库、任务与习作集只存在这台设备的浏览器里，不上传。另有一枚本站 cookie 只记免费示范用了几次。</span>
+      <span>词库、任务与习作集只存在这台设备的浏览器里，不上传。</span>
       <div class="keyrow">
         <span class="keyrow__state" id="key-state" role="status"></span>
         <label class="sr-only" for="model-key">DeepSeek 密钥</label>

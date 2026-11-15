@@ -116,7 +116,7 @@ export function createWordPopover(deps: WordPopoverDeps): WordPopover {
                bank ? ` · <i class="dot ${bank.mastery}" aria-hidden="true"></i>${masteryZh[bank.mastery]}` : ''
              }</p>`
           : `<p class="gloss__meaning empty">${
-              loading ? 'AI 正在查这个词…' : '这个词还没有释义，可以让 AI 按原句现查一条。'
+              loading ? 'AI 正在查这个词…' : '还没有释义。'
             }</p>`
       }
       ${
@@ -169,7 +169,7 @@ export function createWordPopover(deps: WordPopoverDeps): WordPopover {
         fetched.set(term.toLowerCase(), result.data);
         note = null;
       } else {
-        note = `${result.degraded ?? 'AI 没给出释义'}，可以稍后再查。`;
+        note = `${result.degraded ?? 'AI 没给出释义'}。`;
       }
       paint();
       place();

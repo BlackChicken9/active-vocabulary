@@ -135,7 +135,7 @@ export function mountWordsPanel(root: HTMLElement, options: WordsPanelOptions = 
           <button type="button" class="btn btn--secondary btn--sm" id="intake-sample" ${
             intakeBusy ? 'disabled' : ''
           }>试试粘这段</button>
-          <span class="hint">一次最多 30 条，已在词库的词头会跳过</span>
+          <span class="hint">一次最多 30 条，已有的跳过</span>
         </div>`
             : ''
         }

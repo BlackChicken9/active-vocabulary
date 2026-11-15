@@ -4,7 +4,7 @@ import { lengthLine, passageSpec } from './passageLength';
 const STORAGE_KEY = 'tianchi.tasks';
 
 export const MIN_TARGET_WORDS = 2;
-export const MAX_TARGET_WORDS = 5;
+export const MAX_TARGET_WORDS = 8;
 
 function lengthPrompt(count: number, spec: PassageLength): string {
   return `篇幅：写 ${lengthLine(spec)}，${count} 个目标词都要用出来。`;

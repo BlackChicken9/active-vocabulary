@@ -172,19 +172,16 @@ function page(items: SavedPassage[]): string {
     return `
       <div class="saved__head">
         <h2 id="saved-h">习作集</h2>
-        <p class="sub">这里放你自己存下来的 AI 示范和写过的段落。</p>
       </div>
-      <p class="hint">还没有存过。读完示范或拿到点评之后，点结果卡头上的「保存这篇」就会进这里。</p>
+      <p class="hint">还没有存过。点结果里的「保存这篇」就会进这里。</p>
       <div class="row">
         <button type="button" class="btn btn--secondary btn--sm" id="saved-go-write">去写作</button>
-        <span class="hint">存下来的东西只在这台设备的浏览器里，不上传。</span>
       </div>`;
   }
   return `
     <div class="saved__head">
       <h2 id="saved-h">习作集</h2>
       <span class="badge">${items.length} 篇</span>
-      <p class="sub">存在这台设备的浏览器里，换浏览器或清掉站点数据就看不到。</p>
     </div>
     <ul class="saved__list">${items.map(row).join('')}</ul>`;
 }

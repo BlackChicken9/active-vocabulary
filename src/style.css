@@ -1,7 +1,7 @@
 /* 主动词库 · 应用界面
    美术方向：羊皮纸 × 铁胆墨（vellum + iron-gall ink）——米纸底、墨字、赭红细线、3px 直角。
-   骨架仍是 tasteskill 2.5 的 software/ai deal：type Outfit（UI）+ Bodoni/Newsreader（英文书面体）
-   + DM Mono（数字），kit 只加载 ui/cards.css 与 motion/motion.css（public/assets），动效数字沿用 motion.md。
+   字体两套：Outfit（界面、标题与数字）+ Newsreader（英文阅读与词头），
+   kit 只加载 ui/cards.css 与 motion/motion.css（public/assets），动效数字沿用 motion.md。
    --site-* 是 Qoder 站点工作台 Nudge 的契约变量：外观、圆角、间距、字号、动效五项都从这里走。 */
 
 @font-face {
@@ -10,46 +10,6 @@
   font-weight: 400 600;
   font-display: swap;
   src: url('/assets/fonts/outfit-latin.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
-    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-
-@font-face {
-  font-family: 'DM Mono';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url('/assets/fonts/dmmono-400-latin.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
-    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-
-@font-face {
-  font-family: 'DM Mono';
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url('/assets/fonts/dmmono-500-latin.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
-    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-
-@font-face {
-  font-family: 'Bodoni Moda';
-  font-style: normal;
-  font-weight: 400 700;
-  font-display: swap;
-  src: url('/assets/fonts/bodoni-moda-variable.ttf') format('truetype');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
-    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-
-@font-face {
-  font-family: 'Bodoni Moda';
-  font-style: italic;
-  font-weight: 400 700;
-  font-display: swap;
-  src: url('/assets/fonts/bodoni-moda-italic-variable.ttf') format('truetype');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
     U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
@@ -75,8 +35,8 @@
 }
 
 /* 羊皮纸 × 铁胆墨：米纸底、铁胆墨字、赭红只做细线与下划、3px 直角。
-   中文标题走系统衬线族（Songti/宋体/思源宋体），装不上就退黑体，不影响可读性；
-   英文词头用 Bodoni，示范短文正文用 Newsreader（Bodoni 在正文字级太脆）。 */
+   字体两套：界面（含中文标题与数字）统一 Outfit + 系统中文黑体；
+   Newsreader 只给「读」的内容——示范短文、逐句英文与英文词头。 */
 :root {
   color-scheme: light;
   --p-bg: #e7dcc0;
@@ -113,11 +73,8 @@
   --action-ink: var(--site-on-accent);
   --line: var(--site-border);
   --line-strong: color-mix(in oklab, var(--ink) 38%, transparent);
-  --font-display: 'Bodoni Moda', 'Songti SC', 'Noto Serif CJK SC', 'Source Han Serif SC', 'SimSun',
-    var(--site-font);
   --font-text: var(--site-font);
   --font-reading: 'Newsreader', Georgia, 'Times New Roman', serif;
-  --font-mono: 'DM Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --display-weight: 500;
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --dur: calc(150ms * var(--site-motion));
@@ -199,6 +156,14 @@ body {
   overflow-x: hidden;
 }
 
+/* 页面元素都挂在 #app 里，弹柱必须落在它身上（挂在 body 上够不到 main/footer，
+   宽屏时余量会留在 #app 之下、页脚贴不到底）。 */
+#app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100svh;
+}
+
 body::before {
   content: '';
   position: fixed;
@@ -225,7 +190,6 @@ h1,
 h2,
 h3 {
   margin: 0;
-  font-family: var(--font-display);
   font-weight: var(--display-weight);
   letter-spacing: -0.03em;
   text-wrap: balance;
@@ -329,6 +293,11 @@ html .card {
   color: var(--muted);
   font-size: var(--t-label);
   line-height: 1.6;
+}
+
+/* 来源/兜底这类旁注沉到结果块右下角，小字自己待着，不占正文视线。 */
+.engine--foot {
+  text-align: right;
 }
 
 .row {
@@ -540,30 +509,20 @@ html[data-buttons='pill'] .btn--primary:disabled::after {
   min-width: 0;
 }
 
-/* 品牌记号：蘸水笔尖（铁胆墨的源头），单色 mask，跟 --font-display 的衬线字重同一条视觉线。 */
+/* 品牌记号：铁胆红底上的 A 字，和 favicon 使用同一个几何。 */
 .mark {
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   flex: none;
-  background: var(--accent);
-  -webkit-mask: url("/assets/ui/mark.svg") center / contain no-repeat;
-  mask: url("/assets/ui/mark.svg") center / contain no-repeat;
+  border-radius: 4px;
+  background: url("/favicon.svg") center / contain no-repeat;
 }
 
 .brand__name {
-  font-family: var(--font-display);
   font-size: calc(20px * var(--site-type));
   font-weight: 500;
   letter-spacing: -0.02em;
   white-space: nowrap;
-}
-
-.brand__line {
-  color: var(--muted);
-  font-size: var(--t-small);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .tally {
@@ -620,7 +579,7 @@ html[data-buttons='pill'] .btn--primary:disabled::after {
 
 .tally__item b {
   color: var(--ink);
-  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-weight: 500;
   font-size: var(--t-small);
 }
@@ -656,7 +615,7 @@ html[data-buttons='pill'] .btn--primary:disabled::after {
 
 .bank__count {
   color: var(--muted);
-  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: var(--t-small);
 }
 
@@ -677,15 +636,10 @@ html[data-buttons='pill'] .btn--primary:disabled::after {
   min-width: 0;
 }
 
-.desk__head {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-1);
-}
-
 .foot {
   border-top: 1px solid var(--line);
-  padding: var(--s-5) 0 var(--s-6);
+  padding: var(--s-5) 0 var(--s-2);
+  margin-top: auto;
 }
 
 .foot__in {
@@ -786,9 +740,9 @@ textarea:focus {
 
 .pickrow {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
   align-content: flex-start;
-  gap: var(--s-2);
+  gap: 6px;
   max-height: min(46svh, 420px);
   overflow-y: auto;
   padding-right: 4px;
@@ -808,11 +762,11 @@ textarea:focus {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: baseline;
-  column-gap: 7px;
-  row-gap: 1px;
-  min-height: var(--btn-h-sm);
+  column-gap: 6px;
+  row-gap: 0;
+  min-height: 32px;
   max-width: 100%;
-  padding: var(--s-2) var(--s-3);
+  padding: 4px 8px;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   background: transparent;
@@ -834,8 +788,8 @@ textarea:focus {
 
 .pick__hw {
   color: var(--ink);
-  font-family: var(--font-display);
-  font-size: var(--t-body);
+  font-family: var(--font-reading);
+  font-size: var(--t-small);
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -892,14 +846,7 @@ textarea:focus {
 .lengthbar {
   display: flex;
   flex-direction: column;
-  gap: var(--s-3);
-}
-
-.lengthbar__top {
-  display: flex;
-  align-items: center;
-  gap: var(--s-4);
-  flex-wrap: wrap;
+  gap: var(--s-2);
 }
 
 .lengthbar__label {
@@ -907,6 +854,105 @@ textarea:focus {
   font-size: var(--t-label);
   font-weight: 500;
   flex: none;
+}
+
+/* 篇幅滑条 = 一颗很宽的胶囊：档名与句数词数直接写在胶囊里，旋钮从文字上滑过；
+   已过区段给一层 14% 赭红薄染，未过区段保持纸面，与「篇幅」标签同一行。 */
+.lenbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+}
+
+.lenbar__cap {
+  position: relative;
+  flex: 0 1 420px;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--raised);
+  box-shadow: inset 0 1px 0 color-mix(in oklab, #fffaf0 55%, transparent);
+}
+
+.lenbar__cap:has(.lenbar__range:disabled) {
+  opacity: 0.45;
+}
+
+.lenbar__cap:has(.lenbar__range:focus-visible) {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
+}
+
+.lenbar__value {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 18px;
+  color: var(--ink);
+  font-size: var(--t-small);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.lenbar__range {
+  --fill: 0%;
+  appearance: none;
+  -webkit-appearance: none;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.lenbar__range::-webkit-slider-runnable-track {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    color-mix(in oklab, var(--accent) 14%, transparent) 0 var(--fill),
+    transparent var(--fill) 100%
+  );
+}
+
+.lenbar__range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 8px;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  background: var(--p-raised);
+  box-shadow: 0 1px 2px rgb(58 40 22 / 0.25);
+}
+
+.lenbar__range::-moz-range-track {
+  height: 100%;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.lenbar__range::-moz-range-progress {
+  height: 100%;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--accent) 14%, transparent);
+}
+
+.lenbar__range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  background: var(--p-raised);
+  box-shadow: 0 1px 2px rgb(58 40 22 / 0.25);
 }
 
 .seg {
@@ -1032,7 +1078,6 @@ textarea:focus {
   border-radius: var(--r-sm);
   background: color-mix(in oklab, var(--accent) 14%, transparent);
   color: var(--accent);
-  font-family: var(--font-mono);
   font-size: var(--t-lead);
   font-weight: 500;
   line-height: 1;
@@ -1046,7 +1091,6 @@ textarea:focus {
 }
 
 .path__title {
-  font-family: var(--font-display);
   font-size: var(--t-lead);
   font-weight: 500;
   letter-spacing: -0.02em;
@@ -1130,26 +1174,11 @@ textarea:focus {
   gap: var(--s-3);
 }
 
-.work__title {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--s-3);
-  flex-wrap: wrap;
-}
-
-.badges {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.prompt {
-  color: color-mix(in oklab, var(--ink) 88%, var(--card));
-  font-size: var(--t-body);
-  line-height: 1.75;
-  max-width: 68ch;
+/* 任务卡只留一个小标记说明这是哪条路，题干与徽标全是 AI 侧的事，不再铺给读者。 */
+.work__tip {
+  color: var(--muted);
+  font-size: var(--t-label);
+  font-weight: 500;
 }
 
 .targets {
@@ -1244,7 +1273,6 @@ textarea:focus {
 
 .ladder__arrow {
   color: var(--muted);
-  font-family: var(--font-mono);
 }
 
 .passage {
@@ -1261,7 +1289,7 @@ textarea:focus {
   border-left: 2px solid color-mix(in oklab, var(--accent) 70%, transparent);
 }
 
-/* 示范短文是「读」的内容，交给 Newsreader：Bodoni 的字面太窄、细线太脆，正文字级会累眼。 */
+/* 示范短文是「读」的内容，交给 Newsreader：词头同用一族，英文部分一个声音。 */
 .passage__text {
   font-family: var(--font-reading);
   font-size: var(--t-lead);
@@ -1301,7 +1329,7 @@ textarea:focus {
   align-items: center;
   gap: 6px;
   color: var(--muted);
-  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: var(--t-small);
   font-variant-numeric: tabular-nums;
 }
@@ -1321,10 +1349,6 @@ textarea:focus {
   line-height: 1.65;
 }
 
-.mastery.none {
-  color: var(--muted);
-}
-
 .mastery b {
   font-weight: 500;
 }
@@ -1335,10 +1359,6 @@ textarea:focus {
   align-items: center;
   gap: var(--s-3);
   flex-wrap: wrap;
-}
-
-.reader__tip {
-  margin-left: auto;
 }
 
 /* 同一行的控件必须等高：读法两档是 44px，「保存这篇」「只看英文」不能矮一截看着像另一组东西。 */
@@ -1391,7 +1411,6 @@ textarea:focus {
 
 .sent__no {
   color: var(--muted);
-  font-family: var(--font-mono);
   font-size: var(--t-label);
   line-height: 2.1;
   font-variant-numeric: tabular-nums;
@@ -1675,6 +1694,7 @@ textarea:focus {
 }
 
 .gloss__term {
+  font-family: var(--font-reading);
   font-size: var(--t-h3);
   font-weight: 500;
   letter-spacing: -0.01em;
@@ -1686,7 +1706,6 @@ textarea:focus {
   border: 1px solid var(--line);
   border-radius: var(--r-btn);
   color: var(--muted);
-  font-family: var(--font-mono);
   font-size: var(--t-label);
 }
 
@@ -1822,7 +1841,7 @@ textarea:focus {
   display: inline-flex;
   align-items: baseline;
   color: var(--ink);
-  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: var(--t-h3);
   font-weight: 500;
   white-space: nowrap;
@@ -1880,7 +1899,7 @@ textarea:focus {
 }
 
 .usage .hw {
-  font-family: var(--font-display);
+  font-family: var(--font-reading);
   font-size: var(--t-body);
   font-weight: 600;
 }
@@ -1977,7 +1996,7 @@ textarea:focus {
 .saved__meta {
   color: var(--muted);
   font-size: var(--t-label);
-  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 /* 列表行里的目标词：静态标签，不能长得像写作屏那颗可以点的 .target。 */
@@ -2059,7 +2078,6 @@ textarea:focus {
 
 .saved__no {
   color: var(--muted);
-  font-family: var(--font-mono);
   font-size: var(--t-label);
 }
 
@@ -2146,6 +2164,11 @@ textarea:focus {
 
 .layout.layout--view {
   padding-top: var(--s-4);
+  /* 页面是纵向弹柱：页脚线始终压在屏幕最底端，视图吃掉其上的剩余高；
+     这里的底部留白就是两卡与那条截止线之间的呼吸距离，别压太近。 */
+  padding-bottom: var(--s-8);
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .layout.layout--single {
@@ -2312,7 +2335,7 @@ textarea:focus {
 
 .wchip b {
   color: var(--ink);
-  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-weight: 500;
 }
 
@@ -2387,7 +2410,7 @@ textarea:focus {
 }
 
 .wb-hw {
-  font-family: var(--font-display);
+  font-family: var(--font-reading);
   font-size: var(--t-body);
   font-weight: 600;
   letter-spacing: -0.01em;
@@ -2395,7 +2418,6 @@ textarea:focus {
 
 .wb-pos {
   color: var(--muted);
-  font-family: var(--font-mono);
   font-size: var(--t-label);
 }
 
@@ -2475,7 +2497,6 @@ textarea:focus {
 }
 
 .wb-phrase {
-  font-family: var(--font-mono);
 }
 
 .wb-gloss {
@@ -2513,24 +2534,9 @@ textarea:focus {
   margin-top: var(--s-4);
 }
 
-.wdetail-flag {
-  margin: 0;
-  color: var(--st-training);
-  font-size: var(--t-small);
-  line-height: 1.5;
-}
-
-.wdetail-done {
-  margin: 0;
-  color: var(--st-active);
-  font-size: var(--t-small);
-  line-height: 1.5;
-}
-
 .wdetail-meta {
   margin: var(--s-4) 0 0;
   color: var(--muted);
-  font-family: var(--font-mono);
   font-size: var(--t-label);
 }
 
@@ -2593,9 +2599,18 @@ textarea:focus {
   .pickrow {
     max-height: 148px;
   }
+}
 
-  .brand__line {
-    display: none;
+@media (min-width: 1024px) {
+  /* 选词卡撑满页脚以上的剩余高：高度由 body 弹柱分配，词多时只滚词格本身。 */
+  #view-write.layout {
+    align-items: stretch;
+  }
+
+  #view-write .pickrow {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
   }
 }
 
@@ -2708,11 +2723,6 @@ textarea:focus {
     grid-template-columns: 34px minmax(0, 1fr);
   }
 
-  .reader__tip {
-    margin-left: 0;
-    flex-basis: 100%;
-  }
-
   .gloss[data-dock] {
     left: 8px;
     right: 8px;
@@ -2723,11 +2733,6 @@ textarea:focus {
 
   .gloss[data-dock]::before {
     display: none;
-  }
-
-  .work__title {
-    flex-direction: column;
-    align-items: flex-start;
   }
 
   .wform-grid {
@@ -2790,5 +2795,276 @@ textarea:focus {
 
   .wcard {
     padding: var(--s-4);
+  }
+}
+
+/* Mobile focus pass: one compact masthead, one row of navigation, and only
+   the controls needed for the current writing step. */
+@media (max-width: 639px) {
+  :root {
+    --gut: 12px;
+    --nav: 56px;
+  }
+
+  .topbar__in,
+  .viewnav__in,
+  .layout,
+  .foot__in {
+    width: calc(100% - 24px);
+  }
+
+  .topbar__in {
+    gap: 8px;
+  }
+
+  .brand {
+    flex: 1;
+    min-width: 0;
+    gap: 8px;
+  }
+
+  .mark {
+    width: 26px;
+    height: 26px;
+    border-radius: 4px;
+  }
+
+  .brand__name {
+    overflow: hidden;
+    font-size: 16px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .brand__line,
+  .tally__legend {
+    display: none;
+  }
+
+  .tally {
+    flex: 0 0 auto;
+  }
+
+  .tally__bar {
+    width: 60px;
+    height: 6px;
+  }
+
+  .viewnav {
+    padding-top: var(--nav);
+    padding-bottom: 0;
+  }
+
+  .viewnav__in {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .viewnav .seg-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    min-height: 52px;
+    padding: 8px 6px;
+    border: 0;
+    border-right: 1px solid var(--line);
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    text-align: center;
+  }
+
+  .viewnav .seg-btn:first-child {
+    border-left: 1px solid var(--line);
+  }
+
+  .viewnav .seg-btn strong {
+    overflow: hidden;
+    font-size: 15px;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .viewnav .seg-btn small {
+    display: none;
+  }
+
+  .viewnav .seg-btn[aria-pressed='true'] {
+    border-bottom-color: var(--accent);
+    background: var(--raised);
+  }
+
+  .layout,
+  .layout.layout--view {
+    padding-top: 12px;
+    padding-bottom: 32px;
+  }
+
+  .desk__head {
+    display: flex;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+    padding: 2px 0 12px;
+  }
+
+  .desk__head h2 {
+    font-size: 25px;
+  }
+
+  .desk__head .sub {
+    max-width: none;
+    margin: 0;
+    flex: 0 0 auto;
+    font-size: 12px;
+    line-height: 1.5;
+    text-align: left;
+  }
+
+  .card.bank,
+  .card.work,
+  .card.setup {
+    padding: 16px;
+    border-radius: 3px;
+  }
+
+  .bank__head h2 {
+    font-size: 22px;
+  }
+
+  .bank__head {
+    align-items: flex-start;
+  }
+
+  .bank__count {
+    padding-top: 3px;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .pickrow.empty {
+    gap: 12px;
+  }
+
+  .pickrow.empty .hint {
+    font-size: 12px;
+  }
+
+  .lengthbar__top {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .lengthbar__label {
+    font-size: 12px;
+  }
+
+  .seg {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .seg-btn {
+    min-height: 48px;
+  }
+
+  .paths {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .card.path {
+    grid-template-columns: 34px minmax(0, 1fr) 14px;
+    min-height: 64px;
+    padding: 10px 12px;
+    gap: 10px;
+  }
+
+  .path__key {
+    width: 32px;
+    height: 32px;
+  }
+
+  .path__title {
+    font-size: 16px;
+  }
+
+  .path__text,
+  .path__ceil,
+  .path .m-arrow {
+    display: none;
+  }
+
+  .path-hint {
+    min-height: 0;
+    font-size: 11px;
+  }
+
+  .card.work:has(.ladder) {
+    display: none;
+  }
+
+  .foot {
+    margin-top: 20px;
+    padding: 18px 0 24px;
+  }
+
+  .foot__in {
+    gap: 10px;
+    font-size: 11px;
+    line-height: 1.55;
+  }
+
+  .keyrow {
+    width: 100%;
+  }
+
+  .keyrow .keyrow__input {
+    flex: 1 1 150px;
+    width: auto;
+  }
+
+  .keyrow .btn--sm {
+    height: 44px;
+  }
+}
+
+/* Mobile layout lock: the old two-column segmented rule must not split the
+   three main views, and the writing grid must stay in a single visual column. */
+@media (max-width: 639px) {
+  #view-write.layout,
+  #view-write.layout.layout--view {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-auto-rows: max-content !important;
+    align-content: start !important;
+    gap: 16px !important;
+    align-items: start !important;
+    padding-top: 12px !important;
+  }
+
+  #view-write #bank,
+  #view-write .desk {
+    grid-column: 1 !important;
+    margin-top: 0 !important;
+  }
+
+  #view-write #bank {
+    order: 1;
+  }
+
+  #view-write .desk {
+    order: 2;
+  }
+
+  .viewnav .seg {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 0 !important;
+    width: 100% !important;
   }
 }
