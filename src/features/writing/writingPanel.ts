@@ -622,7 +622,7 @@ export function mountWritingPanel(
             <span class="ladder__arrow" aria-hidden="true">→</span>
             <span class="ladder__step active"><i class="dot active" aria-hidden="true"></i>会用</span>
           </div>
-          <p class="sub">读示范只到「练用中」；自己写、被点评用得地道，才升「会用」。</p>
+          <p class="hint">读示范只到「练用中」；自己写、被点评用得地道，才升「会用」。</p>
         </div>
       </section>`;
   }
