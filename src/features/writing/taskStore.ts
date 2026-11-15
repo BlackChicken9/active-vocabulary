@@ -22,12 +22,12 @@ function themeOf(word: Word): string | null {
 
 function scenario(themes: string[]): string {
   if (themes.length === 1) {
-    return `围绕「${themes[0]}」写一小段：说清一件具体的事或一个明确的观点，把勾选的词自然用进去。`;
+    return `围绕「${themes[0]}」讲一件具体的小事：设定清楚的时间、地点和主人公，有起因也有结果，把勾选的词自然用进去。`;
   }
   if (themes.length > 1) {
-    return `这几个词分属「${themes.join('」「')}」，自选一个能同时容纳它们的场景，把词自然用进去。`;
+    return `这几个词分属「${themes.join('」「')}」，自选一个能同时容纳它们的场景，讲一件有起因和结果的具体小事，把词自然用进去。`;
   }
-  return '自选一个生活、学习或工作场景，说清一件具体的事或一个明确的观点，把勾选的词自然用进去。';
+  return '自选一个具体场景（谁、在哪、遇到什么），讲一件有起因和结果的小事，或提出一个明确观点并用一个例子支撑，把勾选的词自然用进去。';
 }
 
 export function loadTasks(): WritingTask[] {

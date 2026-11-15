@@ -154,7 +154,7 @@ async function chat(
   env: GatewayEnv,
   prompt: string,
   user: string,
-  options: { maxTokens?: number; timeoutMs?: number } = {},
+  options: { maxTokens?: number; timeoutMs?: number; temperature?: number } = {},
 ): Promise<{ data: unknown; model: string }> {
   const model = env.AI_MODEL || DEFAULT_MODEL;
   const response = await fetch(`${env.AI_BASE_URL ?? DEFAULT_BASE_URL}/chat/completions`, {
@@ -167,7 +167,8 @@ async function chat(
     },
     body: JSON.stringify({
       model,
-      temperature: 0.2,
+      // 判定类任务压低落随机性；写文章一路调高，0.2 只会写出四平八稳的拼盘。
+      temperature: options.temperature ?? 0.2,
       // 单次生成默认最多 4096 token，讲解那一路另给更低的封顶。
       max_tokens: options.maxTokens ?? 4096,
       response_format: { type: 'json_object' },
@@ -211,9 +212,14 @@ function feedbackPrompt(words: TargetWord[]): string {
 
 function modelTextPrompt(words: TargetWord[], length: PassageLength): string {
   return [
-    '你是英语写作助教，为学习者写一段「示范答案」，把每个目标词自然用出来，并尽量带上它的常见搭配。',
-    `只输出 JSON：{"text":"${length.minSentences}~${length.maxSentences} 句英文（约 ${length.minWords}~${length.maxWords} 词），连贯成一段","wordIds":["实际用到的目标词 id"]}。`,
-    '句数与词数都要落在给定区间内；每个目标词至少出现一次；不要中文，不要解释，不要列出词表。',
+    '你是资深英语写作教练。写一篇可直接当范文的英文微型短文，把目标词自然融进去——先是一篇文章，词服务于文，绝不按词表逐条造句。',
+    '写作要求：',
+    '1. 先立场景：围绕题干选一个具体情境（谁、在哪、发生了什么），全文只讲这一件事，或只支撑一个明确观点；',
+    '2. 句句相扣：每个句子都要承接上一句（指代、因果、转折、递进、举例），读起来是一段完整的话，不是互不相干的句子拼盘；',
+    '3. 细节说话：用具体的人、事、细节推进，不写空泛套话；时态与视角全文一致；',
+    '4. 语言地道：用目标词的自然形态和常见搭配，句子长短有变化；目标词要融得顺，不许为塞词而硬造别扭句；',
+    `5. 篇幅必须达标：${length.minSentences}~${length.maxSentences} 句、约 ${length.minWords}~${length.maxWords} 词，只写一段。`,
+    '只输出 JSON：{"text":"英文短文","wordIds":["实际用到的目标词 id"]}。不要中文、解释或词表。',
     '目标词表：',
     describe(words),
   ].join('\n');
@@ -385,7 +391,7 @@ function normalizeGloss(data: unknown, term: string) {
 function intakePrompt(): string {
   return [
     '你是英语词卡整理助手。用户会粘贴任意格式的内容：可能只是一串单词，也可能是带释义、派生词和例句的笔记。',
-    '只输出 JSON：{"words":[{"headword":"英文词头或短语","pos":"词性，如 v. / adj. / n. / 短语；原文没有就留空字符串","meaningZh":"简体中文释义","theme":"这批词共同的话题，简体中文 2~6 个字，如「海洋与环境」；判断不出就留空字符串","examples":["一句英文例句"],"collocations":[{"phrase":"英文搭配","gloss":"中文说明"}]}]}。',
+    '只输出 JSON：{"words":[{"headword":"英文词头或短语","pos":"词性，如 v. / adj. / n. / 短语；原文没有就留空字符串","phonetic":"英式 IPA 音标，形如 /ˈmɪtɪɡeɪt/；拿不准就留空字符串","meaningZh":"简体中文释义","theme":"这批词共同的话题，简体中文 2~6 个字，如「海洋与环境」；判断不出就留空字符串","examples":["一句英文例句"],"collocations":[{"phrase":"英文搭配","gloss":"中文说明"}]}]}。',
     '规则：原文已有的释义、派生词、例句照抄，不要改写；只有原文缺失时才由你补，补的例句要短、日常可用；',
     '搭配必须是能整块复用的词块（如 early intervention），不要拿派生词充当搭配；同一次粘贴的词尽量归到同一个 theme；',
     '词头去重；最多 30 条；不要输出解释。',
@@ -412,6 +418,7 @@ function normalizeIntake(data: unknown) {
   const words: {
     headword: string;
     pos: string;
+    phonetic: string;
     meaningZh: string;
     theme: string;
     examples: string[];
@@ -437,6 +444,7 @@ function normalizeIntake(data: unknown) {
     words.push({
       headword,
       pos: asString(card.pos, 16) ?? '',
+      phonetic: asString(card.phonetic, 48) ?? '',
       meaningZh: asString(card.meaningZh, 160) ?? '',
       theme: asString(card.theme, 24) ?? '',
       examples: asStringList(card.examples, 2, 4, 240),
@@ -538,7 +546,9 @@ export function createHandler(env: GatewayEnv = {}) {
       if (path === 'model-text') {
         const prompt = asString(body.prompt, 600) ?? '';
         const length = parseLength(body.length, words.length);
-        const { data, model } = await chat(cfg, modelTextPrompt(words, length), `题干：${prompt}`);
+        const { data, model } = await chat(cfg, modelTextPrompt(words, length), `题干：${prompt}`, {
+          temperature: 0.7,
+        });
         // 只有这次真生成出来才算用掉一次：上游失败不该扣掉访客的机会。
         const response = json({
           ok: true,
