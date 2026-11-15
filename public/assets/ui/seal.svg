@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 34 34">
+  <!-- 页脚火漆印：全屏唯一一件饱和物，颜色写死，不走 token -->
+  <g fill="#8c2b22">
+    <circle cx="29.4" cy="17" r="3.3" />
+    <circle cx="27.74" cy="10.8" r="3.3" />
+    <circle cx="23.2" cy="6.26" r="3.3" />
+    <circle cx="17" cy="4.6" r="3.3" />
+    <circle cx="10.8" cy="6.26" r="3.3" />
+    <circle cx="6.26" cy="10.8" r="3.3" />
+    <circle cx="4.6" cy="17" r="3.3" />
+    <circle cx="6.26" cy="23.2" r="3.3" />
+    <circle cx="10.8" cy="27.74" r="3.3" />
+    <circle cx="17" cy="29.4" r="3.3" />
+    <circle cx="23.2" cy="27.74" r="3.3" />
+    <circle cx="27.74" cy="23.2" r="3.3" />
+    <circle cx="17" cy="17" r="12.6" />
+  </g>
+  <circle cx="17" cy="17" r="9.6" fill="none" stroke="#e7cbb4" stroke-width=".9" stroke-opacity=".8" />
+  <text
+    x="17"
+    y="20.6"
+    fill="#f0dcc8"
+    font-family="Georgia, 'Times New Roman', serif"
+    font-size="9"
+    font-weight="600"
+    letter-spacing=".5"
+    text-anchor="middle"
+  >AV</text>
+</svg>

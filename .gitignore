@@ -1,6 +1,8 @@
 node_modules/
 dist/
 .taste-skill/
+# 美术方向的效果图与评审截图，只在本机留档，不进仓库
+vibe_images/
 *.local
 .DS_Store
 Thumbs.db
