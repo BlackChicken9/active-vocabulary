@@ -151,6 +151,7 @@ export function mountWritingPanel(
 ): WritingPanel {
   let selected: string[] = [];
   let task: WritingTask | null = null;
+  let query = '';
   let mode: Mode = 'self';
   let model: ModelText | null = null;
   // 示范是按哪一档篇幅写的：改了篇幅，句数/词数仍按当时那档判断，不然会平白显示「偏长」。
@@ -184,12 +185,6 @@ export function mountWritingPanel(
       render();
     },
   });
-
-  // 标题行横跨两栏放在最上：「本次目标词」和「篇幅选择」两张卡才在同一水平线起头。
-  const deskHead = document.createElement('div');
-  deskHead.className = 'desk__head';
-  deskHead.innerHTML = '<h2 id="desk-h">限定写作</h2>';
-  bankRoot.parentElement!.insertBefore(deskHead, bankRoot);
 
   deskRoot.innerHTML = `
     <div class="card setup m-nolift">
@@ -338,36 +333,39 @@ export function mountWritingPanel(
     }>保存这篇</button>`;
   }
 
-  function lengthBlock(): string {
-    const spec = currentSpec();
-    const count = task ? task.targetWordIds.length : selected.length;
-    const basis = task
+  function lengthBasis(): string {
+    return task
       ? '当前任务'
       : lengthChoice === 'auto'
         ? selected.length
           ? `按 ${selected.length} 个词自动`
           : '按勾选词数自动'
         : '固定篇幅';
+  }
+
+  function lengthBlock(): string {
+    const spec = currentSpec();
+    const count = task ? task.targetWordIds.length : selected.length;
     const crowded = count > spec.maxSentences;
+    const index = Math.max(0, LENGTH_OPTIONS.findIndex((o) => o.id === lengthChoice));
     return `
       <div class="lengthbar">
-        <div class="lengthbar__top">
-          <span class="lengthbar__label" id="length-label">篇幅</span>
-          <div class="seg" role="group" aria-labelledby="length-label">
-            ${LENGTH_OPTIONS.map(
-              (option) => `<button type="button" class="seg-btn" id="len-${option.id}"
-                data-length="${option.id}" ${busy ? 'disabled' : ''} aria-pressed="${lengthChoice === option.id}">
-                <strong>${option.label}</strong><small>${option.hint}</small>
-              </button>`,
-            ).join('')}
-          </div>
+        <span class="lengthbar__label">篇幅</span>
+        <input type="range" class="lenbar__range" id="len-range" min="0" max="${
+          LENGTH_OPTIONS.length - 1
+        }" step="1" value="${index}" aria-label="篇幅档位" ${busy ? 'disabled' : ''}
+          style="--fill:${(index / (LENGTH_OPTIONS.length - 1)) * 100}%">
+        <div class="lenbar__ticks" style="grid-template-columns:repeat(${
+          LENGTH_OPTIONS.length
+        },1fr)" aria-hidden="true">
+          ${LENGTH_OPTIONS.map(
+            (o) => `<span class="${o.id === lengthChoice ? 'on' : ''}">${o.label}</span>`,
+          ).join('')}
         </div>
-        <p class="hint">${basis}：${lengthLine(spec)}</p>
-        ${
-          crowded
-            ? `<p class="hint warn">${count} 个词偏多，换「自动」或更长的档更稳。</p>`
-            : ''
-        }
+        <p class="hint" id="length-hint">${lengthBasis()}：${lengthLine(spec)}</p>
+        <p class="hint warn" id="length-warn" ${crowded ? '' : 'hidden'}>${
+          count
+        } 个词偏多，换「自动」或更长的档更稳。</p>
       </div>`;
   }
 
@@ -386,15 +384,27 @@ export function mountWritingPanel(
   }
 
   function renderPick(words: Word[]): void {
+    const q = query.trim().toLowerCase();
+    const visible = q
+      ? words.filter(
+          (w) => w.headword.toLowerCase().includes(q) || w.meaningZh.toLowerCase().includes(q),
+        )
+      : words;
     bankRoot.innerHTML = `
       <div class="bank__head">
         <h2 id="bank-h">本次目标词</h2>
-        <span class="bank__count">词本 ${words.length} 词</span>
+        <span class="bank__count">${q ? `${visible.length}/` : ''}${words.length} 词</span>
       </div>
       <p class="sub">点词卡勾选，${MIN_TARGET_WORDS}~${MAX_TARGET_WORDS} 个。</p>
       ${
         words.length
-          ? `<div class="pickrow">${words.map(wordPick).join('')}</div>
+          ? `<input class="wb-input bank__search" id="bank-search" type="search"
+               placeholder="搜词或释义" autocomplete="off" spellcheck="false" value="${escapeHtml(query)}">
+             ${
+               visible.length
+                 ? `<div class="pickrow">${visible.map(wordPick).join('')}</div>`
+                 : '<div class="pickrow empty"><p class="hint">没有匹配的词。</p></div>'
+             }
              <div class="bank__foot">
                <p class="hint">已选 ${selected.length}/${MAX_TARGET_WORDS}</p>
                <button type="button" class="btn btn--secondary btn--sm" id="open-words">去词本收词</button>
@@ -404,6 +414,12 @@ export function mountWritingPanel(
                <button type="button" class="btn btn--primary btn--sm" id="open-words">去词本收词</button>
              </div>`
       }`;
+
+    const search = bankRoot.querySelector<HTMLInputElement>('#bank-search');
+    search?.addEventListener('input', () => {
+      query = search.value;
+      render();
+    });
 
     bankRoot.querySelectorAll<HTMLButtonElement>('.pick').forEach((chip) => {
       chip.addEventListener('click', () => {
@@ -777,20 +793,42 @@ export function mountWritingPanel(
       });
     });
 
-    lengthBar.querySelectorAll<HTMLButtonElement>('[data-length]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        if (busy) return;
-        const choice = btn.dataset.length as LengthChoice;
-        if (choice === lengthChoice) return;
-        lengthChoice = choice;
-        if (task) {
-          task = applyLength(task, choice);
-          const label = LENGTH_OPTIONS.find((o) => o.id === choice)?.label ?? choice;
-          // 篇幅是下一次生成的参数，不该顺手删掉已经生成的示范和点评。
-          lengthNote = `篇幅已改为「${label}」，再点 A 或 B 按新篇幅走。`;
-        }
-        render();
+    const range = lengthBar.querySelector<HTMLInputElement>('#len-range');
+
+    /** 拖动途中只改滑条自身：整块重绘会换掉 input，拖着拖着就断了；松手（change）才重绘。 */
+    function syncLength(): void {
+      if (!range) return;
+      const index = Number(range.value);
+      range.style.setProperty('--fill', `${(index / (LENGTH_OPTIONS.length - 1)) * 100}%`);
+      lengthBar.querySelectorAll<HTMLElement>('.lenbar__ticks span').forEach((tick, at) => {
+        tick.classList.toggle('on', at === index);
       });
+      const spec = currentSpec();
+      const hint = lengthBar.querySelector<HTMLElement>('#length-hint');
+      if (hint) hint.textContent = `${lengthBasis()}：${lengthLine(spec)}`;
+      const warn = lengthBar.querySelector<HTMLElement>('#length-warn');
+      if (warn) {
+        const count = task ? task.targetWordIds.length : selected.length;
+        warn.textContent = `${count} 个词偏多，换「自动」或更长的档更稳。`;
+        warn.hidden = !(count > spec.maxSentences);
+      }
+    }
+
+    range?.addEventListener('input', () => {
+      if (busy) return;
+      const option = LENGTH_OPTIONS[Number(range.value)];
+      if (!option || option.id === lengthChoice) return;
+      lengthChoice = option.id;
+      if (task) {
+        task = applyLength(task, lengthChoice);
+        // 篇幅是下一次生成的参数，不该顺手删掉已经生成的示范和点评。
+        lengthNote = `篇幅已改为「${option.label}」，再点 A 或 B 按新篇幅走。`;
+      }
+      syncLength();
+    });
+
+    range?.addEventListener('change', () => {
+      if (!busy) render();
     });
 
     deskRoot.querySelector<HTMLButtonElement>('#reset')?.addEventListener('click', () => {
@@ -959,8 +997,12 @@ export function mountWritingPanel(
   function render(): void {
     const focused = document.activeElement;
     const focusId = focused instanceof HTMLElement && focused.id ? focused.id : (refocus?.id ?? '');
-    const caret =
-      focused instanceof HTMLTextAreaElement ? focused.selectionStart : (refocus?.caret ?? null);
+    const caretInput =
+      focused instanceof HTMLInputElement &&
+      ['text', 'search', 'tel', 'url', 'password'].includes(focused.type);
+    const caret = focused instanceof HTMLTextAreaElement || caretInput
+      ? (focused as HTMLTextAreaElement | HTMLInputElement).selectionStart
+      : (refocus?.caret ?? null);
     const words = loadWords();
     renderPick(words);
     renderDesk(words);
@@ -976,7 +1018,12 @@ export function mountWritingPanel(
     }
     if (again === focused) return;
     again.focus();
-    if (caret !== null && again instanceof HTMLTextAreaElement) again.setSelectionRange(caret, caret);
+    if (
+      caret !== null &&
+      (again instanceof HTMLTextAreaElement || again instanceof HTMLInputElement)
+    ) {
+      again.setSelectionRange(caret, caret);
+    }
   }
 
   render();

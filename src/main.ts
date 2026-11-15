@@ -44,7 +44,7 @@ app.innerHTML = `
   </nav>
   <main class="layout layout--view" id="view-write">
     <aside class="card bank m-nolift" id="bank" aria-labelledby="bank-h"></aside>
-    <section class="desk" id="desk" aria-labelledby="desk-h" tabindex="-1"></section>
+    <section class="desk" id="desk" aria-label="写作台" tabindex="-1"></section>
   </main>
   <main class="layout layout--view layout--single" id="view-words" hidden>
     <section class="card wb m-nolift" id="words-panel" tabindex="-1" aria-labelledby="wb-h"></section>
