@@ -25,12 +25,6 @@ const masteryZh: Record<MasteryStatus, string> = {
   active: '会用',
 };
 
-const statusZh: Record<WritingTask['status'], string> = {
-  drafting: '待写',
-  submitted: '已提交',
-  reviewed: '已点评',
-};
-
 type Mode = 'model' | 'self';
 type Path = 'a' | 'b';
 
@@ -657,15 +651,7 @@ export function mountWritingPanel(
     return `
       <section class="card work m-nolift" aria-label="当前写作任务">
         <div class="work__head">
-          <div class="work__title">
-            <h3>${escapeHtml(active.title)}</h3>
-            <span class="badges">
-              <span class="badge">${mode === 'model' ? 'A · 读示范' : 'B · 自己写'}</span>
-              <span class="badge">${lengthLine(taskLength(active))}</span>
-              <span class="badge">${statusZh[active.status]}</span>
-            </span>
-          </div>
-          <p class="prompt">${escapeHtml(active.prompt).replace(/\n/g, '<br>')}</p>
+          <p class="work__tip">${mode === 'model' ? 'A · AI 示范' : 'B · 自己写'}</p>
           <div class="targets">
             <span class="targets__label">目标词</span>
             ${targets

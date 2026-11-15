@@ -1163,26 +1163,11 @@ textarea:focus {
   gap: var(--s-3);
 }
 
-.work__title {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--s-3);
-  flex-wrap: wrap;
-}
-
-.badges {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.prompt {
-  color: color-mix(in oklab, var(--ink) 88%, var(--card));
-  font-size: var(--t-body);
-  line-height: 1.75;
-  max-width: 68ch;
+/* 任务卡只留一个小标记说明这是哪条路，题干与徽标全是 AI 侧的事，不再铺给读者。 */
+.work__tip {
+  color: var(--muted);
+  font-size: var(--t-label);
+  font-weight: 500;
 }
 
 .targets {
@@ -2737,11 +2722,6 @@ textarea:focus {
 
   .gloss[data-dock]::before {
     display: none;
-  }
-
-  .work__title {
-    flex-direction: column;
-    align-items: flex-start;
   }
 
   .wform-grid {
