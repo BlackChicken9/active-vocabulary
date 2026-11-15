@@ -2000,34 +2000,6 @@ textarea:focus {
 }
 
 /* 列表行里的目标词：静态标签，不能长得像写作屏那颗可以点的 .target。 */
-.saved__terms {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin: 0 0 var(--s-3);
-}
-
-.saved__term {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  padding: 3px 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-btn);
-  background: transparent;
-  font-size: var(--t-label);
-  line-height: 1.5;
-}
-
-.saved__term b {
-  font-weight: 500;
-}
-
-.saved__term span {
-  color: var(--muted);
-}
-
 .saved__body {
   padding: 0 0 var(--s-4);
 }
@@ -2101,16 +2073,14 @@ textarea:focus {
   font-size: var(--t-label);
 }
 
-.saved__parts,
-.saved__gloss {
+.saved__parts {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   margin: 0;
 }
 
-.saved__part,
-.saved__word {
+.saved__part {
   display: inline-flex;
   align-items: baseline;
   gap: 5px;
@@ -2122,8 +2092,7 @@ textarea:focus {
   line-height: 1.5;
 }
 
-.saved__part b,
-.saved__word b {
+.saved__part b {
   color: var(--muted);
   font-weight: 500;
 }
@@ -2602,9 +2571,11 @@ textarea:focus {
 }
 
 @media (min-width: 1024px) {
-  /* 选词卡撑满页脚以上的剩余高：高度由 body 弹柱分配，词多时只滚词格本身。 */
-  #view-write.layout {
-    align-items: stretch;
+  /* 选词卡封顶到首屏底端并吸顶：长结果往下滑时它不再跟着拉长，词格内滚。 */
+  #view-write .card.bank {
+    position: sticky;
+    top: calc(var(--nav) + var(--s-3));
+    max-height: calc(100svh - var(--nav) - var(--s-5));
   }
 
   #view-write .pickrow {
