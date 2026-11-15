@@ -14,6 +14,7 @@ export function mountWordDetailView(root: HTMLElement, word: Word, handlers: Det
       <button class="btn btn--sm btn--secondary wback" type="button">← 返回词本</button>
       <div class="wdetail-head">
         <span class="wb-hw">${escapeHtml(word.headword)}</span>
+        ${word.phonetic ? `<span class="wb-ipa">${escapeHtml(word.phonetic)}</span>` : ''}
         ${word.pos ? `<span class="wb-pos">${escapeHtml(word.pos)}</span>` : ''}
         <span class="badge ${word.mastery}">${masteryZh[word.mastery]}</span>
       </div>
@@ -24,7 +25,7 @@ export function mountWordDetailView(root: HTMLElement, word: Word, handlers: Det
       <h3 class="wdetail-section">搭配</h3>
       ${
         word.collocations.length === 0
-          ? '<p class="wdetail-empty">还没有搭配，先补一条最常用的。</p>'
+          ? '<p class="wdetail-empty">还没有搭配。</p>'
           : `<ul class="wcoll">${word.collocations
               .map(
                 (c) => `
@@ -47,7 +48,7 @@ export function mountWordDetailView(root: HTMLElement, word: Word, handlers: Det
       <h3 class="wdetail-section">例句</h3>
       ${
         word.examples.length === 0
-          ? '<p class="wdetail-empty">还没有例句，自己造一句更容易记住。</p>'
+          ? '<p class="wdetail-empty">还没有例句。</p>'
           : `<ul class="wexamples">${word.examples
               .map((e) => `<li>${escapeHtml(e)}</li>`)
               .join('')}</ul>`
@@ -60,15 +61,11 @@ export function mountWordDetailView(root: HTMLElement, word: Word, handlers: Det
         <button class="btn btn--sm btn--primary" type="submit">加例句</button>
       </form>
 
-      <div class="wdetail-actions">
-        ${
-          word.mastery === 'passive'
-            ? '<button class="btn btn--sm btn--secondary wtrain" type="button">标记为练用中</button>'
-            : word.mastery === 'training'
-              ? '<p class="wdetail-flag">已在练用中，写作时用它，反馈会把它推进到「会用」。</p>'
-              : '<p class="wdetail-done">已经会在写作里用出来了，继续保留这个状态。</p>'
-        }
-      </div>
+      ${
+        word.mastery === 'passive'
+          ? '<div class="wdetail-actions"><button class="btn btn--sm btn--secondary wtrain" type="button">标记为练用中</button></div>'
+          : ''
+      }
       <p class="wdetail-meta">来源：${escapeHtml(word.source ?? '手动收录')} · 更新于 ${new Date(
         word.updatedAt,
       ).toLocaleString()}</p>

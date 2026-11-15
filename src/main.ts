@@ -54,7 +54,7 @@ app.innerHTML = `
   </main>
   <footer class="foot">
     <div class="foot__in">
-      <span>词库、任务与习作集只存在这台设备的浏览器里，不上传。另有一枚本站 cookie 只记免费示范用了几次。</span>
+      <span>词库、任务与习作集只存在这台设备的浏览器里，不上传。</span>
       <div class="keyrow">
         <span class="keyrow__state" id="key-state" role="status"></span>
         <label class="sr-only" for="model-key">DeepSeek 密钥</label>

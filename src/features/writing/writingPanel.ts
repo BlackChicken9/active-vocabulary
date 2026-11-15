@@ -39,12 +39,12 @@ const ARROW = `<svg class="m-arrow" viewBox="0 0 12 12" aria-hidden="true"><path
 const PATH_COPY: Record<Path, { title: string; text: string; ceiling: MasteryStatus }> = {
   a: {
     title: '读 AI 示范短文',
-    text: '按上面的篇幅现写一段，逐句给译文与句子结构，点任意单词看释义。',
+    text: '按篇幅现写一段，逐句配译文与结构。',
     ceiling: 'training',
   },
   b: {
     title: '我自己写',
-    text: '同一篇幅要求，AI 逐词点评搭配与语气，指出哪个词用出了、哪个还生硬。',
+    text: 'AI 逐词点评搭配与语气。',
     ceiling: 'active',
   },
 };
@@ -188,9 +188,7 @@ export function mountWritingPanel(
   // 标题行横跨两栏放在最上：「本次目标词」和「篇幅选择」两张卡才在同一水平线起头。
   const deskHead = document.createElement('div');
   deskHead.className = 'desk__head';
-  deskHead.innerHTML = `
-      <h2 id="desk-h">限定写作</h2>
-      <p class="sub">选篇幅，然后点 A 读示范或点 B 自己写——题目跟着你勾的词走。</p>`;
+  deskHead.innerHTML = '<h2 id="desk-h">限定写作</h2>';
   bankRoot.parentElement!.insertBefore(deskHead, bankRoot);
 
   deskRoot.innerHTML = `
@@ -364,10 +362,10 @@ export function mountWritingPanel(
             ).join('')}
           </div>
         </div>
-        <p class="hint">${basis}：${lengthLine(spec)} · A 与 B 共用这一篇幅</p>
+        <p class="hint">${basis}：${lengthLine(spec)}</p>
         ${
           crowded
-            ? `<p class="hint warn">${count} 个词挤进 ${spec.minSentences}~${spec.maxSentences} 句容易偏长，换「自动」或更长的档更稳。</p>`
+            ? `<p class="hint warn">${count} 个词偏多，换「自动」或更长的档更稳。</p>`
             : ''
         }
       </div>`;
@@ -393,16 +391,16 @@ export function mountWritingPanel(
         <h2 id="bank-h">本次目标词</h2>
         <span class="bank__count">词本 ${words.length} 词</span>
       </div>
-      <p class="sub">点词卡勾上，${MIN_TARGET_WORDS}~${MAX_TARGET_WORDS} 个；右边按这批词出题。</p>
+      <p class="sub">点词卡勾选，${MIN_TARGET_WORDS}~${MAX_TARGET_WORDS} 个。</p>
       ${
         words.length
           ? `<div class="pickrow">${words.map(wordPick).join('')}</div>
              <div class="bank__foot">
-               <p class="hint">已选 ${selected.length}/${MAX_TARGET_WORDS} · 掌握度只升不降</p>
+               <p class="hint">已选 ${selected.length}/${MAX_TARGET_WORDS}</p>
                <button type="button" class="btn btn--secondary btn--sm" id="open-words">去词本收词</button>
              </div>`
           : `<div class="pickrow empty">
-               <p class="hint">词本还是空的，先去词本粘一段正在背的笔记收词。</p>
+               <p class="hint">词本还是空的。</p>
                <button type="button" class="btn btn--primary btn--sm" id="open-words">去词本收词</button>
              </div>`
       }`;
@@ -440,10 +438,10 @@ export function mountWritingPanel(
       return `
         <p class="sent__missing">${
           explainBusy
-            ? 'AI 正在写这一句的译文与结构…'
+            ? 'AI 正在讲这一句…'
             : error
               ? `这句讲解没拿到：${escapeHtml(error)}`
-              : '这一句还没有译文与结构。'
+              : '这一句还没讲。'
         }</p>
         <button type="button" class="btn btn--secondary btn--sm" id="note-ask-${index}" ${
           explainBusy ? 'disabled' : ''
@@ -501,7 +499,7 @@ export function mountWritingPanel(
 
   function explainLine(): string {
     if (explainBusy) {
-      return '<p class="busy"><span class="spinner" aria-hidden="true"></span>AI 正在逐句拆解：译文 · 句子结构 · 词汇表…</p>';
+      return '<p class="busy"><span class="spinner" aria-hidden="true"></span>AI 正在逐句拆解…</p>';
     }
     if (!explain) return '';
     const missing = explain.sentences.filter((note) => !note.zh && !note.structure).length;
@@ -510,7 +508,7 @@ export function mountWritingPanel(
         missing ? '，点该句的「讲这一句」可以单独重试' : ''
       }</p>`;
     }
-    return `<p class="engine">讲解来源：AI 网关 · ${
+    return `<p class="engine">讲解：AI 网关 · ${
       explain.glossary.length ? `${explain.glossary.length} 词释义` : '词汇表为空，点词时现查'
     }${missing ? ` · 还有 ${missing} 句待讲` : ''}</p>`;
   }
@@ -532,15 +530,15 @@ export function mountWritingPanel(
     if (joined) return `<p class="passage__zh">${escapeHtml(joined)}</p>`;
     const missing = notes.filter((note) => !note.zh).length;
     return missing && missing < notes.length
-      ? `<p class="passage__zh">译文还差 ${missing} 句，切到「逐句讲解」点那一句重试。</p>`
+      ? `<p class="passage__zh">译文还差 ${missing} 句，切「逐句讲解」重试。</p>`
       : '';
   }
 
   function renderModel(words: Word[], spec: PassageLength): string {
     if (busy === 'model') {
-      return '<p class="busy"><span class="spinner" aria-hidden="true"></span>AI 正在按题干与篇幅写示范…</p>';
+      return '<p class="busy"><span class="spinner" aria-hidden="true"></span>AI 正在写示范…</p>';
     }
-    if (!model) return '<p class="hint">点上面的 A，按当前篇幅生成一段把目标词用出来的示范。</p>';
+    if (!model) return '';
     const active = task!;
     const marked = words.filter((w) => model!.wordIds.includes(w.id));
     const keys = targetKeys(
@@ -568,7 +566,6 @@ export function mountWritingPanel(
               : ''
           }
           ${saveControl('model', model.text)}
-          <span class="hint reader__tip">点任意单词看释义</span>
         </div>
         ${
           passageView === 'whole'
@@ -581,21 +578,9 @@ export function mountWritingPanel(
             : `<ol class="sents">${notes.map((note, index) => sentenceCard(note, index, keys)).join('')}</ol>`
         }
         <p class="statsline">${statsLine(model.text, modelLength ?? spec)}</p>
-        ${
-          modelLength && !sameSpec(modelLength, spec)
-            ? `<p class="hint">这篇按「${lengthLine(modelLength)}」写的，当前篇幅已改成「${lengthLine(
-                spec,
-              )}」——先点上面的「保存这篇」留住现在这段，再点 A 按新篇幅重写。</p>`
-            : ''
-        }
         ${engineLine(modelEngine)}
         ${explainLine()}
-        <p class="mastery ${trained.length ? '' : 'none'}">${
-          trained.length
-            ? `示范已读，掌握度回写：${changeLine(trained)}`
-            : '这些词此前已在「练用中」或「会用」，状态不变。'
-        }</p>
-        <p class="hint">读示范只到「练用中」。点 B 自己写一段，用出且搭配地道，才会计入「会用」。</p>
+        ${trained.length ? `<p class="mastery">示范已读，掌握度回写：${changeLine(trained)}</p>` : ''}
       </div>`;
   }
 
@@ -622,16 +607,16 @@ export function mountWritingPanel(
             </li>`;
           })
           .join('')}</ul>
-        <p class="mastery ${advanced.length ? '' : 'none'}">${
+        ${
           advanced.length
-            ? `掌握度回写：${changeLine(advanced)}`
-            : '本篇没有词进入「会用」——目标词要用得地道才算数。'
-        }</p>
+            ? `<p class="mastery">掌握度回写：${changeLine(advanced)}</p>`
+            : ''
+        }
       </div>`
       : '';
     return `
       <div class="editor">
-        <p class="sub">写 ${lengthLine(spec)}，把 ${task?.targetWordIds.length ?? 0} 个目标词都用出来即可提交。</p>
+        <p class="sub">写 ${lengthLine(spec)}，把 ${task?.targetWordIds.length ?? 0} 个目标词都用出来。</p>
         <label class="hint" for="draft">你的段落</label>
         <textarea id="draft" rows="${Math.min(8, Math.max(3, spec.maxSentences))}" placeholder="按篇幅写英文，把目标词用进去…">${escapeHtml(draftText)}</textarea>
         <div class="editor__row">
@@ -656,8 +641,7 @@ export function mountWritingPanel(
             <span class="ladder__arrow" aria-hidden="true">→</span>
             <span class="ladder__step active"><i class="dot active" aria-hidden="true"></i>会用</span>
           </div>
-          <p class="sub">读一遍 AI 示范，词只到「练用中」；自己写一段、被点评判为用出且地道，才升到「会用」。掌握度只升不降。</p>
-          <p class="hint">勾好词后点上面的 A 或 B，这里就会出现题目。</p>
+          <p class="sub">读示范只到「练用中」；自己写、被点评用得地道，才升「会用」。</p>
         </div>
       </section>`;
   }
@@ -695,28 +679,27 @@ export function mountWritingPanel(
         </div>
         <div class="row">
           <button type="button" class="btn btn--secondary btn--sm" id="reset" ${busy ? 'disabled' : ''}>换一批词</button>
-          <span class="hint">回到左边重新勾词，再点 A 或 B。</span>
         </div>
       </section>`;
   }
 
   function pathHintLine(): string {
-    if (busy === 'model') return 'AI 正在写示范，稍等一下。';
     if (!task) {
       return selected.length >= MIN_TARGET_WORDS
-        ? `点 A 读示范，或点 B 自己写：两条路都按 ${lengthLine(currentSpec())} 出题。`
-        : `先在左边勾 ${MIN_TARGET_WORDS}~${MAX_TARGET_WORDS} 个词，A 与 B 就可以点了。`;
+        ? ''
+        : `先勾 ${MIN_TARGET_WORDS}~${MAX_TARGET_WORDS} 个词，再点 A 或 B。`;
     }
-    if (sameSelection()) return 'A 与 B 随时切换，题目、示范与草稿都留着。';
-    return selected.length >= MIN_TARGET_WORDS
-      ? '左边勾选已改动：再点 A 或 B 会按新词重新出题。'
-      : `勾选不足 ${MIN_TARGET_WORDS} 个，暂时按当前任务的词切换。`;
+    if (!sameSelection() && selected.length >= MIN_TARGET_WORDS) {
+      return '勾选已改动：再点会按新词重新出题。';
+    }
+    return '';
   }
 
   function renderDesk(words: Word[]): void {
     const spec = currentSpec();
     lengthBar.innerHTML = lengthBlock();
     pathHint.textContent = pathHintLine();
+    pathHint.hidden = !pathHint.textContent;
     pathsBox.dataset.active = task ? (mode === 'model' ? 'a' : 'b') : 'none';
     const pathsDisabled = busy !== null || (!task && selected.length < MIN_TARGET_WORDS);
     pathsBox.querySelectorAll<HTMLButtonElement>('.path').forEach((btn) => {
@@ -804,7 +787,7 @@ export function mountWritingPanel(
           task = applyLength(task, choice);
           const label = LENGTH_OPTIONS.find((o) => o.id === choice)?.label ?? choice;
           // 篇幅是下一次生成的参数，不该顺手删掉已经生成的示范和点评。
-          lengthNote = `篇幅已改为「${label}」（${lengthLine(taskLength(task))}）：已生成的示范与点评保留，再点 A 或 B 按新篇幅走。`;
+          lengthNote = `篇幅已改为「${label}」，再点 A 或 B 按新篇幅走。`;
         }
         render();
       });
