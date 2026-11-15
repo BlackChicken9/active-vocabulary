@@ -910,13 +910,21 @@ export function mountWritingPanel(
     workSlot.querySelector<HTMLButtonElement>('#go-saved')?.addEventListener('click', onOpenSaved);
   }
 
+  /** 窄屏是上下长页：点 A/B 出题后自动跳到下方的结果区，省得用户自己找。 */
+  function jumpToWork(): void {
+    if (!window.matchMedia('(max-width: 1023px)').matches) return;
+    workSlot.querySelector('.card.work')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
   /** A 与 B 就是出题按钮：没有任务时按当前勾选与篇幅建任务，已有任务时切换两条路。 */
   async function pathClick(path: Path): Promise<void> {
     if (busy) return;
     const next: Mode = path === 'a' ? 'model' : 'self';
+    let jumped = false;
     if (!sameSelection() && selected.length >= MIN_TARGET_WORDS) {
       task = createTask(loadWords(), selected, lengthChoice);
       resetOutput();
+      jumped = true;
     }
     if (!task) return;
     mode = next;
@@ -926,6 +934,7 @@ export function mountWritingPanel(
       const active = task;
       busy = 'model';
       render();
+      jumpToWork();
       const result = await requestModelText(active, loadWords());
       busy = null;
       gatewayModel = result.model;
@@ -936,6 +945,7 @@ export function mountWritingPanel(
         modelError = result.degraded ?? 'AI 这次没有给出示范';
         render();
         pathsBox.querySelector<HTMLButtonElement>(`#path-${path}`)?.focus();
+        jumpToWork();
         return;
       }
       modelError = null;
@@ -949,11 +959,13 @@ export function mountWritingPanel(
       onMasteryChanged();
       render();
       pathsBox.querySelector<HTMLButtonElement>(`#path-${path}`)?.focus();
+      jumpToWork();
       if (result.data.text.trim()) void loadExplain(active, result.data.text);
       return;
     }
     render();
     pathsBox.querySelector<HTMLButtonElement>(`#path-${path}`)?.focus();
+    if (jumped) jumpToWork();
   }
 
   pathsBox.querySelectorAll<HTMLButtonElement>('.path').forEach((btn) => {

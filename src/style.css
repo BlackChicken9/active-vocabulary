@@ -2559,7 +2559,9 @@ textarea:focus {
   }
 
   .pickrow {
-    max-height: 148px;
+    /* 窄屏词本整列铺开接着往下排，不塞在小框里内滚；点 A/B 会跳到下面的结果区。 */
+    max-height: none;
+    overflow: visible;
   }
 }
 
