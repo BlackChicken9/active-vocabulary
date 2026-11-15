@@ -295,6 +295,11 @@ html .card {
   line-height: 1.6;
 }
 
+/* 来源/兜底这类旁注沉到结果块右下角，小字自己待着，不占正文视线。 */
+.engine--foot {
+  text-align: right;
+}
+
 .row {
   display: flex;
   align-items: center;

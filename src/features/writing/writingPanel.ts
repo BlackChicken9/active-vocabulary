@@ -303,7 +303,7 @@ export function mountWritingPanel(
   }
 
   function engineLine(source: string | null): string {
-    return `<p class="engine">${
+    return `<p class="engine engine--foot">${
       source
         ? `兜底原因：${escapeHtml(source)}`
         : `来源：AI 网关${gatewayModel ? ` · ${escapeHtml(gatewayModel)}` : ''}${
@@ -499,16 +499,11 @@ export function mountWritingPanel(
     if (explainBusy) {
       return '<p class="busy"><span class="spinner" aria-hidden="true"></span>AI 正在逐句拆解…</p>';
     }
-    if (!explain) return '';
+    if (!explain || !explainEngine) return '';
     const missing = explain.sentences.filter((note) => !note.zh && !note.structure).length;
-    if (explainEngine) {
-      return `<p class="engine">兜底原因：${escapeHtml(explainEngine)}${
-        missing ? '，点该句的「讲这一句」可以单独重试' : ''
-      }</p>`;
-    }
-    return `<p class="engine">讲解：AI 网关 · ${
-      explain.glossary.length ? `${explain.glossary.length} 词释义` : '词汇表为空，点词时现查'
-    }${missing ? ` · 还有 ${missing} 句待讲` : ''}</p>`;
+    return `<p class="engine">兜底原因：${escapeHtml(explainEngine)}${
+      missing ? '，点该句的「讲这一句」可以单独重试' : ''
+    }</p>`;
   }
 
   /** 整段的中文由逐句译文按序拼；没讲齐就是空，显示和保存都不拼半截糊弄读者。 */
@@ -576,9 +571,9 @@ export function mountWritingPanel(
             : `<ol class="sents">${notes.map((note, index) => sentenceCard(note, index, keys)).join('')}</ol>`
         }
         <p class="statsline">${statsLine(model.text, modelLength ?? spec)}</p>
-        ${engineLine(modelEngine)}
         ${explainLine()}
         ${trained.length ? `<p class="mastery">示范已读，掌握度回写：${changeLine(trained)}</p>` : ''}
+        ${engineLine(modelEngine)}
       </div>`;
   }
 
@@ -594,7 +589,6 @@ export function mountWritingPanel(
           ${saveControl('mine', feedback.submittedText)}
         </div>
         <p class="overall">${escapeHtml(feedback.overall)}</p>
-        ${engineLine(feedbackEngine)}
         <ul class="usage">${feedback.usages
           .map((u) => {
             const headword = words.find((w) => w.id === u.wordId)?.headword ?? u.wordId;
@@ -610,6 +604,7 @@ export function mountWritingPanel(
             ? `<p class="mastery">掌握度回写：${changeLine(advanced)}</p>`
             : ''
         }
+        ${engineLine(feedbackEngine)}
       </div>`
       : '';
     return `
