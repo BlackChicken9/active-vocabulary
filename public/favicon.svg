@@ -1,4 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="8" fill="#0d060b" />
-  <path d="M6.5 25.5V16a9.5 9.5 0 0 1 19 0v9.5h-6V16a3.5 3.5 0 0 0-7 0v9.5z" fill="#ff488b" />
+  <!-- 与界内品牌记号同一支笔尖：米纸底、赭红描边 -->
+  <rect width="32" height="32" rx="4" fill="#f0e7d3" />
+  <g fill="none" stroke="#8c2b22" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M16 4.8 24.4 16 16 27.2 7.6 16Z" />
+    <path d="M16 11.4v9.2" />
+    <circle cx="16" cy="16.6" r="2.2" />
+  </g>
 </svg>

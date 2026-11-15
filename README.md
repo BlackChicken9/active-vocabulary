@@ -72,7 +72,7 @@
 ## 技术选型
 
 - **Vite 7 + TypeScript 5.6**，无前端框架：视图是模板字符串 + `escapeHtml` 转义，状态在模块闭包里，改动走重绘；没有虚拟 DOM 与运行时依赖，构建产物就是静态资源。
-- **样式**：`src/style.css` 一套设计令牌（配色/字体/圆角/按钮），`public/assets/ui/cards.css`、`public/assets/motion/motion.css` 是卡片与动效的公共层，字体子集本地化在 `public/assets/fonts/`。
+- **样式**：`src/style.css` 一套设计令牌（配色/字体/圆角/按钮），美术方向是「羊皮纸 × 铁胆墨」——米纸底 + 墨字 + 赭红细线，层级靠纸面明度阶梯（页面 → 面板 → 选中/正文块 → 悬停）而不是灰度涂色，英文词头用 Bodoni、示范正文用 Newsreader、数字用 DM Mono，全部子集本地化在 `public/assets/fonts/`；`public/assets/ui/` 另有单色 SVG 素材（笔尖品牌记号、页脚火漆印）。`public/assets/ui/cards.css`、`public/assets/motion/motion.css` 是卡片与动效的公共层。
 - **AI 网关**：Deno Function（`functions/index.ts` 入口 + `functions/handler.ts` 全部逻辑），单文件、无框架，按路径尾段路由。
 - **存储**：浏览器 localStorage，无账号、无服务端数据库。每个浏览器只看得见自己的词库与密钥。另有唯一一枚本站 cookie `av_trial`，只装「这台设备用掉几次免费示范」这个数字和它的签名，供 AI 网关记账用，不跨站、不参与内容存储。
 
