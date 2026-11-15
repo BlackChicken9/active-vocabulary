@@ -171,10 +171,7 @@ function page(items: SavedPassage[]): string {
   if (!items.length) {
     return `
       <div class="saved__head">
-        <div>
-          <span class="page-title__index">04 / SAVED WORK</span>
-          <h2 id="saved-h"><span class="page-title__en">ARCHIVE</span><span class="page-title__zh">习作集</span></h2>
-        </div>
+        <h2 id="saved-h">习作集</h2>
         <p class="sub">这里放你自己存下来的 AI 示范和写过的段落。</p>
       </div>
       <p class="hint">还没有存过。读完示范或拿到点评之后，点结果卡头上的「保存这篇」就会进这里。</p>
@@ -185,10 +182,7 @@ function page(items: SavedPassage[]): string {
   }
   return `
     <div class="saved__head">
-      <div>
-        <span class="page-title__index">04 / SAVED WORK</span>
-        <h2 id="saved-h"><span class="page-title__en">ARCHIVE</span><span class="page-title__zh">习作集</span></h2>
-      </div>
+      <h2 id="saved-h">习作集</h2>
       <span class="badge">${items.length} 篇</span>
       <p class="sub">存在这台设备的浏览器里，换浏览器或清掉站点数据就看不到。</p>
     </div>
