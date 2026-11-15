@@ -348,19 +348,25 @@ export function mountWritingPanel(
     const count = task ? task.targetWordIds.length : selected.length;
     const crowded = count > spec.maxSentences;
     const index = Math.max(0, LENGTH_OPTIONS.findIndex((o) => o.id === lengthChoice));
+    const fill = (index / (LENGTH_OPTIONS.length - 1)) * 100;
     return `
       <div class="lengthbar">
         <span class="lengthbar__label">篇幅</span>
-        <input type="range" class="lenbar__range" id="len-range" min="0" max="${
-          LENGTH_OPTIONS.length - 1
-        }" step="1" value="${index}" aria-label="篇幅档位" ${busy ? 'disabled' : ''}
-          style="--fill:${(index / (LENGTH_OPTIONS.length - 1)) * 100}%">
-        <div class="lenbar__ticks" style="grid-template-columns:repeat(${
-          LENGTH_OPTIONS.length
-        },1fr)" aria-hidden="true">
-          ${LENGTH_OPTIONS.map(
-            (o) => `<span class="${o.id === lengthChoice ? 'on' : ''}">${o.label}</span>`,
-          ).join('')}
+        <div class="lenbar">
+          <input type="range" class="lenbar__range" id="len-range" min="0" max="${
+            LENGTH_OPTIONS.length - 1
+          }" step="1" value="${index}" aria-label="篇幅档位" ${busy ? 'disabled' : ''}
+            style="--fill:${fill}%">
+          <span class="lenbar__bubble" style="--x:${fill}%">${
+            LENGTH_OPTIONS[index].label
+          } · ${lengthLine(spec)}</span>
+          <div class="lenbar__ticks" style="grid-template-columns:repeat(${
+            LENGTH_OPTIONS.length
+          },1fr)" aria-hidden="true">
+            ${LENGTH_OPTIONS.map(
+              (o) => `<span class="${o.id === lengthChoice ? 'on' : ''}">${o.label}</span>`,
+            ).join('')}
+          </div>
         </div>
         <p class="hint" id="length-hint">${lengthBasis()}：${lengthLine(spec)}</p>
         <p class="hint warn" id="length-warn" ${crowded ? '' : 'hidden'}>${
@@ -799,11 +805,17 @@ export function mountWritingPanel(
     function syncLength(): void {
       if (!range) return;
       const index = Number(range.value);
-      range.style.setProperty('--fill', `${(index / (LENGTH_OPTIONS.length - 1)) * 100}%`);
+      const fill = `${(index / (LENGTH_OPTIONS.length - 1)) * 100}%`;
+      range.style.setProperty('--fill', fill);
+      const spec = currentSpec();
+      const bubble = lengthBar.querySelector<HTMLElement>('.lenbar__bubble');
+      if (bubble) {
+        bubble.style.setProperty('--x', fill);
+        bubble.textContent = `${LENGTH_OPTIONS[index].label} · ${lengthLine(spec)}`;
+      }
       lengthBar.querySelectorAll<HTMLElement>('.lenbar__ticks span').forEach((tick, at) => {
         tick.classList.toggle('on', at === index);
       });
-      const spec = currentSpec();
       const hint = lengthBar.querySelector<HTMLElement>('#length-hint');
       if (hint) hint.textContent = `${lengthBasis()}：${lengthLine(spec)}`;
       const warn = lengthBar.querySelector<HTMLElement>('#length-warn');

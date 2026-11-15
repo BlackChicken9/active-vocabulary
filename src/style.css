@@ -852,14 +852,19 @@ textarea:focus {
   flex: none;
 }
 
-/* 篇幅滑条：圆头胶囊轨道 + 圆旋钮（iOS 音量条样式），限宽缩短拖程；
-   赭红填充表示已过区段，纸白旋钮带赭红描边。 */
+/* 篇幅滑条：圆头胶囊轨道 + 圆旋钮（iOS 音量条样式）；
+   赭红填充表示已过区段，纸白旋钮带赭红描边，拖动/聚焦时旋钮上方浮出当前篇幅。 */
+.lenbar {
+  position: relative;
+  width: min(100%, 520px);
+}
+
 .lenbar__range {
   --fill: 0%;
   appearance: none;
   -webkit-appearance: none;
   display: block;
-  width: min(100%, 340px);
+  width: 100%;
   height: 28px;
   margin: 0;
   background: transparent;
@@ -883,9 +888,9 @@ textarea:focus {
 
 .lenbar__range::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 18px;
-  height: 18px;
-  margin-top: -5px;
+  width: 20px;
+  height: 20px;
+  margin-top: -6px;
   border: 2px solid var(--accent);
   border-radius: 50%;
   background: var(--p-raised);
@@ -905,8 +910,8 @@ textarea:focus {
 }
 
 .lenbar__range::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border: 2px solid var(--accent);
   border-radius: 50%;
   background: var(--p-raised);
@@ -918,9 +923,35 @@ textarea:focus {
   outline-offset: 4px;
 }
 
+/* 气泡跟旋钮走（--x 与填充同值），只在拖动或键盘聚焦时出现。 */
+.lenbar__bubble {
+  position: absolute;
+  top: -10px;
+  left: var(--x, 0%);
+  translate: -50% -100%;
+  padding: 3px 10px;
+  border: 1px solid color-mix(in oklab, var(--accent) 40%, transparent);
+  border-radius: 999px;
+  background: var(--raised);
+  color: var(--ink);
+  font-size: var(--t-label);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms var(--ease);
+  z-index: 1;
+}
+
+.lenbar__range:active + .lenbar__bubble,
+.lenbar__range:focus-visible + .lenbar__bubble {
+  opacity: 1;
+}
+
 .lenbar__ticks {
   display: grid;
-  width: min(100%, 340px);
+  width: 100%;
+  margin-top: 2px;
   color: var(--muted);
   font-size: var(--t-label);
   line-height: 1.2;
