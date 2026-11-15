@@ -863,7 +863,7 @@ textarea:focus {
 
 .lenbar__cap {
   position: relative;
-  flex: 1 1 auto;
+  flex: 0 1 420px;
   height: 36px;
   border: 1px solid var(--line);
   border-radius: 999px;

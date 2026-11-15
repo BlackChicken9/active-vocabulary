@@ -354,7 +354,7 @@ export function mountWritingPanel(
         <div class="lenbar">
           <span class="lengthbar__label">篇幅</span>
           <div class="lenbar__cap">
-            <span class="lenbar__value">${LENGTH_OPTIONS[index].label} · ${lengthLine(spec)}</span>
+            <span class="lenbar__value">${LENGTH_OPTIONS[index].label} · ${spec.minSentences}~${spec.maxSentences} 句</span>
             <input type="range" class="lenbar__range" id="len-range" min="0" max="${
               LENGTH_OPTIONS.length - 1
             }" step="1" value="${index}" aria-label="篇幅档位" ${busy ? 'disabled' : ''}
@@ -802,7 +802,9 @@ export function mountWritingPanel(
       range.style.setProperty('--fill', fill);
       const spec = currentSpec();
       const value = lengthBar.querySelector<HTMLElement>('.lenbar__value');
-      if (value) value.textContent = `${LENGTH_OPTIONS[index].label} · ${lengthLine(spec)}`;
+      if (value) {
+        value.textContent = `${LENGTH_OPTIONS[index].label} · ${spec.minSentences}~${spec.maxSentences} 句`;
+      }
       const hint = lengthBar.querySelector<HTMLElement>('#length-hint');
       if (hint) hint.textContent = `${lengthBasis()}：${lengthLine(spec)}`;
       const warn = lengthBar.querySelector<HTMLElement>('#length-warn');
