@@ -564,7 +564,6 @@ export function mountWritingPanel(
               )}</p>${wholeTranslation(notes)}</div>`
             : `<ol class="sents">${notes.map((note, index) => sentenceCard(note, index, keys)).join('')}</ol>`
         }
-        <p class="statsline">${statsLine(model.text, modelLength ?? spec)}</p>
         ${trained.length ? `<p class="mastery">示范已读，掌握度回写：${changeLine(trained)}</p>` : ''}
         ${engineLine(modelEngine)}
       </div>`;
