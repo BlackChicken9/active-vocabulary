@@ -185,11 +185,15 @@ export function mountWritingPanel(
     },
   });
 
-  deskRoot.innerHTML = `
-    <div class="desk__head">
+  // 标题行横跨两栏放在最上：「本次目标词」和「篇幅选择」两张卡才在同一水平线起头。
+  const deskHead = document.createElement('div');
+  deskHead.className = 'desk__head';
+  deskHead.innerHTML = `
       <h2 id="desk-h">限定写作</h2>
-      <p class="sub">选篇幅，然后点 A 读示范或点 B 自己写——题目跟着你勾的词走。</p>
-    </div>
+      <p class="sub">选篇幅，然后点 A 读示范或点 B 自己写——题目跟着你勾的词走。</p>`;
+  bankRoot.parentElement!.insertBefore(deskHead, bankRoot);
+
+  deskRoot.innerHTML = `
     <div class="card setup m-nolift">
       <div id="lengthbar"></div>
       <div class="paths" id="paths" data-active="none" role="group" aria-label="两条练习路径">

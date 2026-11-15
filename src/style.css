@@ -677,9 +677,9 @@ html[data-buttons='pill'] .btn--primary:disabled::after {
   min-width: 0;
 }
 
-/* 标题与说明同行（同 .bank__head / .saved__head 的头部样式），下面两张卡的起点才与左栏齐平；
-   窄屏放不下时说明才折到标题下方。 */
+/* 标题行横跨 .layout 两栏（同 .bank__head / .saved__head 的单行头部），左右两卡同一水平线起头。 */
 .desk__head {
+  grid-column: 1 / -1;
   display: flex;
   align-items: baseline;
   gap: var(--s-3);
