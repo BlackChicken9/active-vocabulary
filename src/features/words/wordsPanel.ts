@@ -57,10 +57,8 @@ function chipsHtml(words: Word[], filter: MasteryFilter): string {
 }
 
 function listHtml(words: Word[], filter: MasteryFilter): string {
+  if (words.length === 0) return '';
   const chips = `<div class="wfilter" role="group" aria-label="按掌握度筛选">${chipsHtml(words, filter)}</div>`;
-  if (words.length === 0) {
-    return `${chips}<p class="wempty">词本还是空的。粘一段正在背的笔记，或者手动填一个词。</p>`;
-  }
   const visible = filter === 'all' ? words : words.filter((w) => w.mastery === filter);
   return `${chips}${
     visible.length === 0
@@ -81,14 +79,57 @@ export function mountWordsPanel(root: HTMLElement, options: WordsPanelOptions = 
   /** null = 还没点过：词本空着时默认摊开粘贴框走首屏闭环，已有词时收成一行。 */
   let intakeOpen: boolean | null = null;
 
+  async function runImport(rawValue: string): Promise<void> {
+    if (intakeBusy || !rawValue.trim()) return;
+    intakeBusy = true;
+    intakeNote = '';
+    draw();
+    const outcome = await importWords(rawValue);
+    intakeBusy = false;
+    const overflow = outcome.added.length
+      ? options.onWordsAdded?.(outcome.added.map((word) => word.id)) ?? []
+      : [];
+    if (outcome.added.length) intakeRaw = '';
+    const headwords = (ids: string[]) => {
+      const names = outcome.added
+        .filter((word) => ids.includes(word.id))
+        .map((word) => escapeHtml(word.headword));
+      return names.length > 3 ? `${names.slice(0, 3).join('、')} 等` : names.join('、');
+    };
+    const skippedLine = outcome.skipped.length
+      ? `，跳过 ${outcome.skipped.length} 个已在词库`
+      : '';
+    const degradedLine = outcome.degraded ? `<br>兜底原因：${escapeHtml(outcome.degraded)}` : '';
+    const pickLine = overflow.length
+      ? `，${headwords(overflow)} 没勾上（目标词已满）`
+      : '，已勾成这次的目标词';
+    intakeJump = outcome.added.length > 0;
+    intakeNote = outcome.added.length
+      ? `已加入 ${outcome.added.length} 个词${skippedLine}${pickLine}。${degradedLine}`
+      : outcome.skipped.length
+        ? `没有新词入库：粘的 ${outcome.skipped.length} 个词头都已经在词本里了。`
+        : `没识别出词头，换一行一个词的写法再试一次。${degradedLine}`;
+    options.onChanged?.();
+    draw();
+  }
+
   function draw(): void {
     const words = loadWords();
     const opened = openWordId ? words.find((w) => w.id === openWordId) : undefined;
     const showIntake = intakeOpen ?? words.length === 0;
+    const firstRun = words.length === 0;
 
     root.innerHTML = `
       <div class="wb__head">
-        <h2 id="wb-h">词本</h2>
+        <div>
+          <span class="page-title__index">02 / VOCABULARY ARCHIVE</span>
+          <h2 id="wb-h"><span class="page-title__en">LEXICON</span><span class="page-title__zh">词本</span></h2>
+          <p class="sub">${
+            firstRun
+              ? '先收一组正在背的词。整理后会自动选进这次写作。'
+              : 'Collect the words you meet. Keep what belongs in your own English.'
+          }</p>
+        </div>
         <span class="bank__count">${words.length} 词</span>
       </div>
       <div class="wpanel-body"></div>`;
@@ -107,14 +148,22 @@ export function mountWordsPanel(root: HTMLElement, options: WordsPanelOptions = 
     }
 
     body.innerHTML = `
-      <div class="intake">
+      <div class="intake${firstRun ? ' intake--first-run' : ''}">
         <div class="wbar">
-          <button type="button" class="btn btn--sm btn--secondary" id="intake-toggle" aria-expanded="${showIntake}">${
-            showIntake ? '收起收词框' : '粘贴收词'
-          }</button>
-          <button type="button" class="btn btn--sm btn--secondary" id="manual-toggle" aria-expanded="${manualOpen}">${
-            manualOpen ? '收起手动填词' : '手动填一个'
-          }</button>
+          ${
+            firstRun
+              ? '<span class="intake-kicker">先粘贴，再整理</span>'
+              : `<button type="button" class="btn btn--sm btn--secondary" id="intake-toggle" aria-expanded="${showIntake}">${
+                  showIntake ? '收起收词框' : '粘贴收词'
+                }</button>`
+          }
+          ${
+            firstRun
+              ? ''
+              : `<button type="button" class="btn btn--sm btn--secondary" id="manual-toggle" aria-expanded="${manualOpen}">${
+                  manualOpen ? '收起手动填词' : '手动填一个'
+                }</button>`
+          }
           ${
             intakeNote
               ? `<p class="wstatus">${intakeNote}${
@@ -126,16 +175,16 @@ export function mountWordsPanel(root: HTMLElement, options: WordsPanelOptions = 
         ${
           showIntake
             ? `
-        <label class="hint" for="intake-raw">一串单词、一段带释义的笔记都行，不用管格式</label>
-        <textarea id="intake-raw" rows="3" placeholder="直接粘贴，AI 会整理成词卡…">${escapeHtml(intakeRaw)}</textarea>
+        <label class="hint" for="intake-raw">单词、带释义的笔记或例句都可以。</label>
+        <textarea id="intake-raw" rows="${firstRun ? 5 : 4}" placeholder="把正在背的词粘在这里…">${escapeHtml(intakeRaw)}</textarea>
         <div class="intake__bar">
           <button type="button" class="btn btn--primary btn--sm" id="intake-run" ${
             intakeBusy || !intakeRaw.trim() ? 'disabled' : ''
           }>${intakeBusy ? 'AI 正在整理词卡…' : '整理成词卡'}</button>
-          <button type="button" class="btn btn--secondary btn--sm" id="intake-sample" ${
+          <button type="button" class="sample-link" id="intake-sample-run" ${
             intakeBusy ? 'disabled' : ''
-          }>试试粘这段</button>
-          <span class="hint">一次最多 30 条，已在词库的词头会跳过</span>
+          }>用示例词开始</button>
+          <span class="hint">一次最多 30 个词，已有词头会跳过。</span>
         </div>`
             : ''
         }
@@ -157,47 +206,12 @@ export function mountWordsPanel(root: HTMLElement, options: WordsPanelOptions = 
       if (intakeOpen) root.querySelector<HTMLTextAreaElement>('#intake-raw')?.focus();
     });
 
-    body.querySelector<HTMLButtonElement>('#intake-sample')?.addEventListener('click', () => {
-      if (intakeBusy) return;
-      intakeRaw = INTAKE_SAMPLE;
-      intakeNote = '';
-      draw();
-      const again = root.querySelector<HTMLTextAreaElement>('#intake-raw');
-      again?.focus();
-      again?.setSelectionRange(again.value.length, again.value.length);
+    body.querySelector<HTMLButtonElement>('#intake-run')?.addEventListener('click', async () => {
+      await runImport(intakeRaw);
     });
 
-    body.querySelector<HTMLButtonElement>('#intake-run')?.addEventListener('click', async () => {
-      if (intakeBusy || !intakeRaw.trim()) return;
-      intakeBusy = true;
-      draw();
-      const outcome = await importWords(intakeRaw);
-      intakeBusy = false;
-      const overflow = outcome.added.length
-        ? options.onWordsAdded?.(outcome.added.map((word) => word.id)) ?? []
-        : [];
-      if (outcome.added.length) intakeRaw = '';
-      const headwords = (ids: string[]) => {
-        const names = outcome.added
-          .filter((word) => ids.includes(word.id))
-          .map((word) => escapeHtml(word.headword));
-        return names.length > 3 ? `${names.slice(0, 3).join('、')} 等` : names.join('、');
-      };
-      const skippedLine = outcome.skipped.length
-        ? `，跳过 ${outcome.skipped.length} 个已在词库`
-        : '';
-      const degradedLine = outcome.degraded ? `<br>兜底原因：${escapeHtml(outcome.degraded)}` : '';
-      const pickLine = overflow.length
-        ? `，${headwords(overflow)} 没勾上（目标词已满）`
-        : '，已勾成这次的目标词';
-      intakeJump = outcome.added.length > 0;
-      intakeNote = outcome.added.length
-        ? `已加入 ${outcome.added.length} 个词${skippedLine}${pickLine}。${degradedLine}`
-        : outcome.skipped.length
-          ? `没有新词入库：粘的 ${outcome.skipped.length} 个词头都已经在词本里了。`
-          : `没识别出词头，换一行一个词的写法再试一次。${degradedLine}`;
-      options.onChanged?.();
-      draw();
+    body.querySelector<HTMLButtonElement>('#intake-sample-run')?.addEventListener('click', async () => {
+      await runImport(INTAKE_SAMPLE);
     });
 
     body.querySelector<HTMLButtonElement>('#go-write')?.addEventListener('click', () => {

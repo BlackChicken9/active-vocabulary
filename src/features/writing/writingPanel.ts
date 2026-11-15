@@ -34,32 +34,36 @@ const statusZh: Record<WritingTask['status'], string> = {
 type Mode = 'model' | 'self';
 type Path = 'a' | 'b';
 
-const ARROW = `<svg class="m-arrow" viewBox="0 0 12 12" aria-hidden="true"><path class="m-arrow__stem" d="M1 6h7"/><path class="m-arrow__head" d="M5.5 2.5 9 6l-3.5 3.5"/></svg>`;
-
 const PATH_COPY: Record<Path, { title: string; text: string; ceiling: MasteryStatus }> = {
   a: {
-    title: '读 AI 示范短文',
-    text: '按上面的篇幅现写一段，逐句给译文与句子结构，点任意单词看释义。',
+    title: '读示范',
+    text: '先看一篇完整范文。',
     ceiling: 'training',
   },
   b: {
-    title: '我自己写',
-    text: '同一篇幅要求，AI 逐词点评搭配与语气，指出哪个词用出了、哪个还生硬。',
+    title: '自己写',
+    text: '直接进入编辑器。',
     ceiling: 'active',
   },
+};
+
+const LENGTH_EN: Record<LengthChoice, string> = {
+  auto: 'AUTO',
+  short: 'SHORT',
+  medium: 'MEDIUM',
+  long: 'LONG',
 };
 
 function pathButton(path: Path): string {
   const copy = PATH_COPY[path];
   return `
-    <button type="button" class="card path" id="path-${path}" data-path="${path}" aria-pressed="false">
+    <button type="button" class="path" id="path-${path}" data-path="${path}" aria-pressed="false">
       <span class="path__key" aria-hidden="true">${path.toUpperCase()}</span>
       <span class="path__body">
         <span class="path__title">${copy.title}</span>
         <span class="path__text">${copy.text}</span>
         <span class="path__ceil"><i class="dot ${copy.ceiling}" aria-hidden="true"></i>最高到「${masteryZh[copy.ceiling]}」</span>
       </span>
-      ${ARROW}
     </button>`;
 }
 
@@ -186,18 +190,18 @@ export function mountWritingPanel(
   });
 
   deskRoot.innerHTML = `
-    <div class="desk__head">
-      <h2 id="desk-h">限定写作</h2>
-      <p class="sub">选篇幅，然后点 A 读示范或点 B 自己写——题目跟着你勾的词走。</p>
-    </div>
     <div class="card setup m-nolift">
       <div id="lengthbar"></div>
-      <div class="paths" id="paths" data-active="none" role="group" aria-label="两条练习路径">
-        <span class="m-tab-ind" aria-hidden="true"></span>
-        ${pathButton('a')}
-        ${pathButton('b')}
+      <div class="paths-block">
+        <p class="control-label">练习方式</p>
+        <div class="paths" id="paths" data-active="none" role="group" aria-label="两条练习路径">
+          <span class="m-tab-ind" aria-hidden="true"></span>
+          ${pathButton('a')}
+          ${pathButton('b')}
+        </div>
       </div>
       <p class="hint path-hint" id="path-hint"></p>
+      <div class="setup__commit" id="setup-commit"></div>
     </div>
     <div id="work-slot"></div>`;
 
@@ -205,6 +209,7 @@ export function mountWritingPanel(
   const indicator = pathsBox.querySelector<HTMLElement>('.m-tab-ind')!;
   const lengthBar = deskRoot.querySelector<HTMLElement>('#lengthbar')!;
   const pathHint = deskRoot.querySelector<HTMLElement>('#path-hint')!;
+  const setupCommit = deskRoot.querySelector<HTMLElement>('#setup-commit')!;
   const workSlot = deskRoot.querySelector<HTMLElement>('#work-slot')!;
   let placed = false;
 
@@ -350,12 +355,12 @@ export function mountWritingPanel(
     return `
       <div class="lengthbar">
         <div class="lengthbar__top">
-          <span class="lengthbar__label" id="length-label">篇幅</span>
+          <span class="lengthbar__label" id="length-label"><b>篇幅</b><small>LENGTH</small></span>
           <div class="seg" role="group" aria-labelledby="length-label">
             ${LENGTH_OPTIONS.map(
               (option) => `<button type="button" class="seg-btn" id="len-${option.id}"
                 data-length="${option.id}" ${busy ? 'disabled' : ''} aria-pressed="${lengthChoice === option.id}">
-                <strong>${option.label}</strong><small>${option.hint}</small>
+                <strong>${LENGTH_EN[option.id]}</strong><small>${option.label} · ${option.hint}</small>
               </button>`,
             ).join('')}
           </div>
@@ -386,10 +391,13 @@ export function mountWritingPanel(
   function renderPick(words: Word[]): void {
     bankRoot.innerHTML = `
       <div class="bank__head">
-        <h2 id="bank-h">本次目标词</h2>
+        <div>
+          <span class="section-index">01 / TARGETS</span>
+          <h2 id="bank-h"><span class="section-en">LEXICON</span><span class="section-zh">本次目标词</span></h2>
+        </div>
         <span class="bank__count">词本 ${words.length} 词</span>
       </div>
-      <p class="sub">点词卡勾上，${MIN_TARGET_WORDS}~${MAX_TARGET_WORDS} 个；右边按这批词出题。</p>
+      <p class="sub">勾 ${MIN_TARGET_WORDS}~${MAX_TARGET_WORDS} 个词，右侧据此出题。</p>
       ${
         words.length
           ? `<div class="pickrow">${words.map(wordPick).join('')}</div>
@@ -628,7 +636,7 @@ export function mountWritingPanel(
     return `
       <div class="editor">
         <p class="sub">写 ${lengthLine(spec)}，把 ${task?.targetWordIds.length ?? 0} 个目标词都用出来即可提交。</p>
-        <label class="hint" for="draft">你的段落</label>
+        <label class="hint" for="draft"><b>DRAFT</b> / 你的段落</label>
         <textarea id="draft" rows="${Math.min(8, Math.max(3, spec.maxSentences))}" placeholder="按篇幅写英文，把目标词用进去…">${escapeHtml(draftText)}</textarea>
         <div class="editor__row">
           <span class="hint" id="count">${statsLine(draftText, spec)}</span>
@@ -642,38 +650,51 @@ export function mountWritingPanel(
 
   function ladderCard(): string {
     return `
-      <section class="card work m-nolift" aria-label="掌握度怎么升">
-        <div class="ladder">
-          <h3>掌握度怎么升</h3>
-          <div class="ladder__steps">
-            <span class="ladder__step passive"><i class="dot" aria-hidden="true"></i>认识</span>
-            <span class="ladder__arrow" aria-hidden="true">→</span>
-            <span class="ladder__step training"><i class="dot training" aria-hidden="true"></i>练用中</span>
-            <span class="ladder__arrow" aria-hidden="true">→</span>
-            <span class="ladder__step active"><i class="dot active" aria-hidden="true"></i>会用</span>
+      <section class="card work start-guide m-nolift" aria-label="开始写作">
+        <div class="start-guide__opening">
+          <span class="start-guide__monogram" aria-hidden="true">Aa</span>
+          <div>
+            <span class="section-index">ACTIVE VOCABULARY / SESSION 01</span>
+            <h3>Make the word yours.</h3>
+            <p class="sub">先选目标词，再让它们出现在一段真正完成的英文里。</p>
           </div>
-          <p class="sub">读一遍 AI 示范，词只到「练用中」；自己写一段、被点评判为用出且地道，才升到「会用」。掌握度只升不降。</p>
-          <p class="hint">勾好词后点上面的 A 或 B，这里就会出现题目。</p>
+          <span class="start-guide__count">${selected.length} / ${MAX_TARGET_WORDS}</span>
+        </div>
+        <ol class="start-steps">
+          <li><span>I</span><b>SELECT</b><small>先从上方选 ${MIN_TARGET_WORDS}~${MAX_TARGET_WORDS} 个词</small></li>
+          <li><span>II</span><b>SET THE LENGTH</b><small>自动、短、中或长</small></li>
+          <li><span>III</span><b>COMPOSE</b><small>A 读示范，B 自己写</small></li>
+        </ol>
+        <div class="start-guide__ladder" aria-label="掌握度路径">
+          <span><i class="dot passive" aria-hidden="true"></i>认识</span>
+          <span class="start-guide__arrow" aria-hidden="true">→</span>
+          <span><i class="dot training" aria-hidden="true"></i>练用中</span>
+          <span class="start-guide__arrow" aria-hidden="true">→</span>
+          <span><i class="dot active" aria-hidden="true"></i>会用</span>
         </div>
       </section>`;
   }
 
   function workCard(words: Word[], spec: PassageLength): string {
-    if (!task) return ladderCard();
+    if (!task) return selected.length >= MIN_TARGET_WORDS ? '' : ladderCard();
     const active = task;
     const targets = words.filter((w) => active.targetWordIds.includes(w.id));
+    const promptMain = active.prompt.split('\n\n')[0] ?? active.prompt;
     return `
       <section class="card work m-nolift" aria-label="当前写作任务">
         <div class="work__head">
           <div class="work__title">
-            <h3>${escapeHtml(active.title)}</h3>
+            <div>
+              <span class="section-index">PROMPT / ${active.targetWordIds.length} TARGETS</span>
+              <h3>${escapeHtml(active.title)}</h3>
+            </div>
             <span class="badges">
               <span class="badge">${mode === 'model' ? 'A · 读示范' : 'B · 自己写'}</span>
               <span class="badge">${lengthLine(taskLength(active))}</span>
               <span class="badge">${statusZh[active.status]}</span>
             </span>
           </div>
-          <p class="prompt">${escapeHtml(active.prompt).replace(/\n/g, '<br>')}</p>
+          <p class="prompt">${escapeHtml(promptMain)}</p>
           <div class="targets">
             <span class="targets__label">目标词</span>
             ${targets
@@ -690,8 +711,8 @@ export function mountWritingPanel(
           ${mode === 'model' ? renderModel(words, spec) : renderSelf(words, spec)}
         </div>
         <div class="row">
-          <button type="button" class="btn btn--secondary btn--sm" id="reset" ${busy ? 'disabled' : ''}>换一批词</button>
-          <span class="hint">回到左边重新勾词，再点 A 或 B。</span>
+          <button type="button" class="btn btn--secondary btn--sm" id="reset" ${busy ? 'disabled' : ''}>重新选词</button>
+          <span class="hint">回到左边重新勾选，再点 A 或 B。</span>
         </div>
       </section>`;
   }
@@ -700,26 +721,60 @@ export function mountWritingPanel(
     if (busy === 'model') return 'AI 正在写示范，稍等一下。';
     if (!task) {
       return selected.length >= MIN_TARGET_WORDS
-        ? `点 A 读示范，或点 B 自己写：两条路都按 ${lengthLine(currentSpec())} 出题。`
-        : `先在左边勾 ${MIN_TARGET_WORDS}~${MAX_TARGET_WORDS} 个词，A 与 B 就可以点了。`;
+        ? `已选 ${selected.length} 个词。确认篇幅和方式后开始。`
+        : `先在左边选 ${MIN_TARGET_WORDS}~${MAX_TARGET_WORDS} 个词。`;
     }
-    if (sameSelection()) return 'A 与 B 随时切换，题目、示范与草稿都留着。';
+    if (sameSelection()) return 'A 与 B 随时切换，题目、示范和草稿都会保留。';
     return selected.length >= MIN_TARGET_WORDS
-      ? '左边勾选已改动：再点 A 或 B 会按新词重新出题。'
-      : `勾选不足 ${MIN_TARGET_WORDS} 个，暂时按当前任务的词切换。`;
+      ? '目标词已改变，按新词重新开始。'
+      : `至少选 ${MIN_TARGET_WORDS} 个词才能开始。`;
+  }
+
+  function startControl(): string {
+    const enough = selected.length >= MIN_TARGET_WORDS;
+    const staleSelection = task !== null && !sameSelection() && enough;
+    const staleModel = task !== null && modelLength !== null && !sameSpec(modelLength, taskLength(task));
+    if (busy) {
+      return '<button class="btn btn--primary btn--start" type="button" disabled>处理中…</button>';
+    }
+    if (!task) {
+      return `
+        <button class="btn btn--primary btn--start" id="start-session" type="button" ${enough ? '' : 'disabled'}>
+          ${enough ? `开始练习 · ${mode === 'model' ? '读示范' : '自己写'}` : `先选 ${MIN_TARGET_WORDS} 个词`}
+        </button>
+        <span class="setup__count">${selected.length} / ${MAX_TARGET_WORDS}</span>`;
+    }
+    if (staleSelection) {
+      return `
+        <button class="btn btn--primary btn--start" id="start-session" type="button">按新词开始</button>
+        <span class="setup__count">${selected.length} / ${MAX_TARGET_WORDS}</span>`;
+    }
+    if (mode === 'model' && (!model || staleModel)) {
+      return `
+        <button class="btn btn--primary btn--start" id="start-session" type="button">
+          ${model ? '按新篇幅生成' : '生成示范'}
+        </button>
+        <span class="setup__count">${selected.length} / ${MAX_TARGET_WORDS}</span>`;
+    }
+    return '';
   }
 
   function renderDesk(words: Word[]): void {
     const spec = currentSpec();
     lengthBar.innerHTML = lengthBlock();
     pathHint.textContent = pathHintLine();
-    pathsBox.dataset.active = task ? (mode === 'model' ? 'a' : 'b') : 'none';
-    const pathsDisabled = busy !== null || (!task && selected.length < MIN_TARGET_WORDS);
+    pathsBox.dataset.active = mode === 'model' ? 'a' : 'b';
+    const pathsDisabled = busy !== null;
     pathsBox.querySelectorAll<HTMLButtonElement>('.path').forEach((btn) => {
-      const on = task !== null && (btn.dataset.path === 'a') === (mode === 'model');
+      const on = (btn.dataset.path === 'a') === (mode === 'model');
       btn.setAttribute('aria-pressed', String(on));
       btn.disabled = pathsDisabled;
       btn.classList.toggle('m-nolift', on);
+    });
+    setupCommit.innerHTML = startControl();
+    setupCommit.querySelector<HTMLButtonElement>('#start-session')?.addEventListener('click', () => {
+      const forceModel = task !== null && sameSelection() && mode === 'model' && model !== null;
+      void pathClick(mode === 'model' ? 'a' : 'b', forceModel);
     });
     placeIndicator();
     workSlot.innerHTML = workCard(words, spec);
@@ -887,8 +942,8 @@ export function mountWritingPanel(
     workSlot.querySelector<HTMLButtonElement>('#go-saved')?.addEventListener('click', onOpenSaved);
   }
 
-  /** A 与 B 就是出题按钮：没有任务时按当前勾选与篇幅建任务，已有任务时切换两条路。 */
-  async function pathClick(path: Path): Promise<void> {
+  /** 主按钮负责开始或生成；A/B 只选择练习方式。 */
+  async function pathClick(path: Path, forceModel = false): Promise<void> {
     if (busy) return;
     const next: Mode = path === 'a' ? 'model' : 'self';
     if (!sameSelection() && selected.length >= MIN_TARGET_WORDS) {
@@ -899,7 +954,7 @@ export function mountWritingPanel(
     mode = next;
     // 改过篇幅后这篇已经对不上要求，再点 A 是重写，不是继续读旧的那段。
     const stale = model !== null && modelLength !== null && !sameSpec(modelLength, taskLength(task));
-    if (next === 'model' && (!model || stale)) {
+    if (next === 'model' && (!model || stale || forceModel)) {
       const active = task;
       busy = 'model';
       render();
@@ -920,12 +975,19 @@ export function mountWritingPanel(
       return;
     }
     render();
+    if (next === 'self') {
+      deskRoot.querySelector<HTMLTextAreaElement>('#draft')?.focus();
+      return;
+    }
     pathsBox.querySelector<HTMLButtonElement>(`#path-${path}`)?.focus();
   }
 
   pathsBox.querySelectorAll<HTMLButtonElement>('.path').forEach((btn) => {
     btn.addEventListener('click', () => {
-      void pathClick(btn.dataset.path as Path);
+      if (busy) return;
+      mode = btn.dataset.path === 'a' ? 'model' : 'self';
+      render();
+      pathsBox.querySelector<HTMLButtonElement>(`#path-${btn.dataset.path}`)?.focus();
     });
   });
 

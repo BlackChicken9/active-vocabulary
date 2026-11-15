@@ -7,7 +7,7 @@ import { mountWordsPanel, type WordsPanel } from './features/words/wordsPanel';
 import { mountWritingPanel } from './features/writing/writingPanel';
 import { mountSavedPanel, type SavedPanel } from './features/writing/savedPanel';
 
-const app = document.querySelector<HTMLDivElement>('#app')!;
+const app = document.body;
 
 const masteryZh: Record<MasteryStatus, string> = {
   passive: '认识',
@@ -15,34 +15,52 @@ const masteryZh: Record<MasteryStatus, string> = {
   active: '会用',
 };
 
+const masteryEn: Record<MasteryStatus, string> = {
+  passive: 'RECOGNITION',
+  training: 'IN PRACTICE',
+  active: 'ACTIVE',
+};
+
 const LADDER: MasteryStatus[] = ['passive', 'training', 'active'];
 
 app.innerHTML = `
-  <a class="skip-link" href="#desk" id="skip">跳到写作区</a>
-  <header class="topbar">
-    <div class="topbar__in">
-      <div class="brand">
-        <span class="mark" aria-hidden="true"></span>
-        <h1 class="brand__name">主动词库</h1>
-        <span class="brand__line">把认识的词练成会用的词</span>
+  <header class="app-header nav">
+    <div class="topbar">
+      <div class="topbar__in wrap">
+        <a class="skip-link" href="#desk" id="skip">跳到写作区</a>
+        <div class="brand">
+          <h1 class="brand__name">
+            <span class="mark" aria-hidden="true"></span>
+            <span class="brand__wordmark"><b>ACTIVE LEXICON</b><small>主动词库</small></span>
+          </h1>
+          <span class="brand__line">English, made active.</span>
+        </div>
+        <div class="tally" id="tally" aria-live="polite" aria-label="词库掌握度统计"></div>
       </div>
-      <div class="tally" id="tally" aria-live="polite" aria-label="词库掌握度统计"></div>
     </div>
+    <nav class="viewnav" aria-label="视图切换">
+      <div class="viewnav__in seg wrap" role="group" aria-label="写作、词本与习作集">
+        <button type="button" class="seg-btn" data-view="write" aria-pressed="true">
+          <strong>WRITE <span>写作</span></strong><small>Select · Read · Compose</small>
+        </button>
+        <button type="button" class="seg-btn" data-view="words" aria-pressed="false">
+          <strong>LEXICON <span>词本</span></strong><small>Collect · Collocate · Keep</small>
+        </button>
+        <button type="button" class="seg-btn" data-view="saved" aria-pressed="false">
+          <strong>ARCHIVE <span>习作集</span></strong><small id="saved-sub">Saved work · 保存的示范与批改</small>
+        </button>
+      </div>
+    </nav>
   </header>
-  <nav class="viewnav" aria-label="视图切换">
-    <div class="viewnav__in seg" role="group" aria-label="写作、词本与习作集">
-      <button type="button" class="seg-btn" data-view="write" aria-pressed="true">
-        <strong>写作</strong><small>按词出题 · 逐句点评</small>
-      </button>
-      <button type="button" class="seg-btn" data-view="words" aria-pressed="false">
-        <strong>词本</strong><small>粘笔记收词 · 学搭配</small>
-      </button>
-      <button type="button" class="seg-btn" data-view="saved" aria-pressed="false">
-        <strong>习作集</strong><small id="saved-sub">存下的示范与批改</small>
-      </button>
+  <main class="layout layout--view layout--write" id="view-write">
+    <div class="write-intro">
+      <div>
+        <span class="write-intro__index">WRITING / 01</span>
+        <h2 id="desk-h">限定写作</h2>
+        <p>选篇幅，再点 A 读示范或点 B 自己写。题目会跟着目标词变化。</p>
+      </div>
+      <span class="write-intro__note">ACTIVE USE</span>
     </div>
-  </nav>
-  <main class="layout layout--view" id="view-write">
     <aside class="card bank m-nolift" id="bank" aria-labelledby="bank-h"></aside>
     <section class="desk" id="desk" aria-labelledby="desk-h" tabindex="-1"></section>
   </main>
@@ -52,16 +70,16 @@ app.innerHTML = `
   <main class="layout layout--view layout--single" id="view-saved" hidden>
     <section class="card saved m-nolift" id="saved-panel" tabindex="-1" aria-labelledby="saved-h"></section>
   </main>
-  <footer class="foot">
-    <div class="foot__in">
-      <span>词库、任务与习作集只存在这台设备的浏览器里，不上传。另有一枚本站 cookie 只记免费示范用了几次。</span>
+  <footer class="foot closing">
+    <div class="foot__in wrap">
+      <span>词库、任务和习作集保存在当前浏览器。生成请求会发到本站 AI 网关。</span>
       <div class="keyrow">
         <span class="keyrow__state" id="key-state" role="status"></span>
-        <label class="sr-only" for="model-key">DeepSeek 密钥</label>
+        <label class="keyrow__label" for="model-key">使用自己的密钥</label>
         <input class="wb-input keyrow__input" id="model-key" type="password" autocomplete="off"
-               spellcheck="false" placeholder="粘贴你自己的 DeepSeek 密钥（sk-…）"
-               title="DeepSeek 开放平台申请；只存在这台设备的浏览器里，随请求交给本站网关，共享电脑上别用">
-        <button type="button" class="btn btn--sm btn--secondary" id="key-save">保存</button>
+               spellcheck="false" placeholder="DeepSeek 密钥（sk-…）"
+               title="DeepSeek 开放平台申请；只存在这台设备的浏览器里，随请求交给本站网关">
+        <button type="button" class="btn btn--sm btn--secondary" id="key-save">保存密钥</button>
         <button type="button" class="btn btn--sm btn--secondary" id="key-clear" hidden>清除</button>
       </div>
     </div>
@@ -76,7 +94,7 @@ tally.innerHTML = `
   <div class="tally__legend">
     ${LADDER.map(
       (status) => `<span class="tally__item" data-item="${status}">
-        <i class="dot ${status}" aria-hidden="true"></i><b data-n="${status}">0</b><span>${masteryZh[status]}</span>
+        <i class="dot ${status}" aria-hidden="true"></i><b data-n="${status}">0</b><span>${masteryZh[status]}<em>${masteryEn[status]}</em></span>
       </span>`,
     ).join('')}
   </div>`;
@@ -155,7 +173,7 @@ const savedSub = document.querySelector<HTMLElement>('#saved-sub')!;
 /** 顶栏那档随时告诉用户习作集里现在有几篇——存完不用切过去才知道有没有生效。 */
 function renderSavedCount(): void {
   const n = loadSaved().length;
-  savedSub.textContent = n ? `存下的示范与批改 · ${n} 篇` : '存下的示范与批改';
+  savedSub.textContent = n ? `${n} saved · 已存 ${n} 篇` : 'Saved work · 保存的示范与批改';
 }
 
 const writing = mountWritingPanel(
@@ -225,4 +243,7 @@ for (const button of viewButtons) {
 window.addEventListener('hashchange', () => showView(viewFromHash() ?? current));
 
 renderSavedCount();
-showView(viewFromHash() ?? 'write');
+const hashView = viewFromHash();
+const initialView = hashView ?? (loadWords().length ? 'write' : 'words');
+if (!hashView) history.replaceState(null, '', HASH[initialView]);
+showView(initialView);
