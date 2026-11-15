@@ -148,14 +148,20 @@ html {
 }
 
 body {
-  display: flex;
-  flex-direction: column;
   min-height: 100svh;
   background: var(--bg);
   color: var(--ink);
   font: 400 var(--t-body) / 1.6 var(--font-text);
   letter-spacing: -0.005em;
   overflow-x: hidden;
+}
+
+/* 页面元素都挂在 #app 里，弹柱必须落在它身上（挂在 body 上够不到 main/footer，
+   宽屏时余量会留在 #app 之下、页脚贴不到底）。 */
+#app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100svh;
 }
 
 body::before {
