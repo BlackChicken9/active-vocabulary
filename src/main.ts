@@ -24,7 +24,6 @@ app.innerHTML = `
       <div class="brand">
         <span class="mark" aria-hidden="true"></span>
         <h1 class="brand__name">主动词库</h1>
-        <span class="brand__line">把认识的词练成会用的词</span>
       </div>
       <div class="tally" id="tally" aria-live="polite" aria-label="词库掌握度统计"></div>
     </div>

@@ -514,14 +514,6 @@ html[data-buttons='pill'] .btn--primary:disabled::after {
   white-space: nowrap;
 }
 
-.brand__line {
-  color: var(--muted);
-  font-size: var(--t-small);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .tally {
   display: flex;
   flex-direction: column;
@@ -635,7 +627,8 @@ html[data-buttons='pill'] .btn--primary:disabled::after {
 
 .foot {
   border-top: 1px solid var(--line);
-  padding: var(--s-5) 0 var(--s-6);
+  padding: var(--s-5) 0 var(--s-2);
+  margin-top: auto;
 }
 
 .foot__in {
@@ -2609,10 +2602,6 @@ textarea:focus {
 
   .pickrow {
     max-height: 148px;
-  }
-
-  .brand__line {
-    display: none;
   }
 }
 

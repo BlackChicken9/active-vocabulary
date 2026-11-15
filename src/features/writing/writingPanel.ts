@@ -333,16 +333,6 @@ export function mountWritingPanel(
     }>保存这篇</button>`;
   }
 
-  function lengthBasis(): string {
-    return task
-      ? '当前任务'
-      : lengthChoice === 'auto'
-        ? selected.length
-          ? `按 ${selected.length} 个词自动`
-          : '按勾选词数自动'
-        : '固定篇幅';
-  }
-
   function lengthBlock(): string {
     const spec = currentSpec();
     const count = task ? task.targetWordIds.length : selected.length;
@@ -361,7 +351,6 @@ export function mountWritingPanel(
               style="--fill:${fill}%">
           </div>
         </div>
-        <p class="hint" id="length-hint">${lengthBasis()}：${lengthLine(spec)}</p>
         <p class="hint warn" id="length-warn" ${crowded ? '' : 'hidden'}>${
           count
         } 个词偏多，换「自动」或更长的档更稳。</p>
@@ -807,8 +796,6 @@ export function mountWritingPanel(
         'aria-valuetext',
         `${LENGTH_OPTIONS[index].label}，${spec.minSentences}~${spec.maxSentences} 句`,
       );
-      const hint = lengthBar.querySelector<HTMLElement>('#length-hint');
-      if (hint) hint.textContent = `${lengthBasis()}：${lengthLine(spec)}`;
       const warn = lengthBar.querySelector<HTMLElement>('#length-warn');
       if (warn) {
         const count = task ? task.targetWordIds.length : selected.length;
