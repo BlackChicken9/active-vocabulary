@@ -524,7 +524,7 @@ export function mountWritingPanel(
       return '<p class="busy"><span class="spinner" aria-hidden="true"></span>AI 正在写示范…</p>';
     }
     if (!model) {
-      return modelError ? `<p class="hint warn">没拿到 AI 示范：${escapeHtml(modelError)}</p>` : '';
+      return modelError ? `<p class="hint warn">${escapeHtml(modelError)}</p>` : '';
     }
     const active = task!;
     const marked = words.filter((w) => model!.wordIds.includes(w.id));

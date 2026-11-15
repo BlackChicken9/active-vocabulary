@@ -31,7 +31,7 @@ const FALLBACK_MESSAGES: Record<string, string> = {
   service_not_configured: '网关没配 DeepSeek 密钥',
   model_key_invalid: '你的 DeepSeek 密钥格式不对（页脚可改）',
   model_key_rejected: '你的 DeepSeek 密钥被拒（页脚可换）',
-  trial_exceeded: '免费示范的 5 次已用完，页脚粘自己的 DeepSeek 密钥继续',
+  trial_exceeded: '免费示范次数已用完',
   upstream_unavailable: 'AI 网关调用上游失败',
   invalid_request: 'AI 网关拒绝了请求参数',
   access_denied: '没有访问 AI 网关的权限',
