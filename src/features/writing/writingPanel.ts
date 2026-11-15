@@ -356,8 +356,8 @@ export function mountWritingPanel(
           <div class="lenbar__cap">
             <span class="lenbar__value">${LENGTH_OPTIONS[index].label} · ${spec.minSentences}~${spec.maxSentences} 句</span>
             <input type="range" class="lenbar__range" id="len-range" min="0" max="${
-              LENGTH_OPTIONS.length - 1
-            }" step="1" value="${index}" aria-label="篇幅档位" ${busy ? 'disabled' : ''}
+              (LENGTH_OPTIONS.length - 1) * 100
+            }" step="1" value="${index * 100}" aria-label="篇幅档位" ${busy ? 'disabled' : ''}
               style="--fill:${fill}%">
           </div>
         </div>
@@ -793,18 +793,20 @@ export function mountWritingPanel(
     });
 
     const range = lengthBar.querySelector<HTMLInputElement>('#len-range');
+    const stops = LENGTH_OPTIONS.length;
+    const span = (stops - 1) * 100;
 
     /** 拖动途中只改滑条自身：整块重绘会换掉 input，拖着拖着就断了；松手（change）才重绘。 */
-    function syncLength(): void {
-      if (!range) return;
-      const index = Number(range.value);
-      const fill = `${(index / (LENGTH_OPTIONS.length - 1)) * 100}%`;
-      range.style.setProperty('--fill', fill);
+    function syncLengthText(index: number): void {
       const spec = currentSpec();
       const value = lengthBar.querySelector<HTMLElement>('.lenbar__value');
       if (value) {
         value.textContent = `${LENGTH_OPTIONS[index].label} · ${spec.minSentences}~${spec.maxSentences} 句`;
       }
+      range?.setAttribute(
+        'aria-valuetext',
+        `${LENGTH_OPTIONS[index].label}，${spec.minSentences}~${spec.maxSentences} 句`,
+      );
       const hint = lengthBar.querySelector<HTMLElement>('#length-hint');
       if (hint) hint.textContent = `${lengthBasis()}：${lengthLine(spec)}`;
       const warn = lengthBar.querySelector<HTMLElement>('#length-warn');
@@ -815,21 +817,55 @@ export function mountWritingPanel(
       }
     }
 
+    /** 值域放大 100 倍、步长 1：旋钮跟手连续滑（音量条手感），档位=就近取整百；
+     * step=100 的写法旋钮会在四个点之间瞬移，就是「生硬」的根因。 */
     range?.addEventListener('input', () => {
       if (busy) return;
-      const option = LENGTH_OPTIONS[Number(range.value)];
-      if (!option || option.id === lengthChoice) return;
-      lengthChoice = option.id;
+      const raw = Number(range.value);
+      const index = Math.max(0, Math.min(stops - 1, Math.round(raw / 100)));
+      range.style.setProperty('--fill', `${(raw / span) * 100}%`);
+      if (LENGTH_OPTIONS[index].id === lengthChoice) return;
+      lengthChoice = LENGTH_OPTIONS[index].id;
       if (task) {
         task = applyLength(task, lengthChoice);
         // 篇幅是下一次生成的参数，不该顺手删掉已经生成的示范和点评。
-        lengthNote = `篇幅已改为「${option.label}」，再点 A 或 B 按新篇幅走。`;
+        lengthNote = `篇幅已改为「${LENGTH_OPTIONS[index].label}」，再点 A 或 B 按新篇幅走。`;
       }
-      syncLength();
+      syncLengthText(index);
     });
 
     range?.addEventListener('change', () => {
-      if (!busy) render();
+      if (busy) return;
+      const index = Math.max(0, Math.min(stops - 1, Math.round(Number(range.value) / 100)));
+      range.value = String(index * 100);
+      range.style.setProperty('--fill', `${(index / (stops - 1)) * 100}%`);
+      syncLengthText(index);
+      render();
+    });
+
+    // 键盘按档走：连续值域里方向键必须一档一档跳，Home/End 落到两端。
+    range?.addEventListener('keydown', (event) => {
+      if (busy) return;
+      const step: Record<string, number> = {
+        ArrowLeft: -1,
+        ArrowDown: -1,
+        PageDown: -1,
+        ArrowRight: 1,
+        ArrowUp: 1,
+        PageUp: 1,
+      };
+      const current = Math.round(Number(range.value) / 100);
+      let next: number;
+      if (event.key === 'Home') next = 0;
+      else if (event.key === 'End') next = stops - 1;
+      else if (event.key in step) next = current + step[event.key];
+      else return;
+      event.preventDefault();
+      next = Math.max(0, Math.min(stops - 1, next));
+      if (next === current) return;
+      range.value = String(next * 100);
+      range.dispatchEvent(new Event('input', { bubbles: true }));
+      range.dispatchEvent(new Event('change', { bubbles: true }));
     });
 
     deskRoot.querySelector<HTMLButtonElement>('#reset')?.addEventListener('click', () => {
