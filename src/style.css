@@ -148,6 +148,8 @@ html {
 }
 
 body {
+  display: flex;
+  flex-direction: column;
   min-height: 100svh;
   background: var(--bg);
   color: var(--ink);
@@ -2157,6 +2159,9 @@ textarea:focus {
 
 .layout.layout--view {
   padding-top: var(--s-4);
+  /* 页面是纵向弹柱：视图吃掉页脚以上的全部剩余高，选词栏的「撑到底」就有了确定的边界。 */
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .layout.layout--single {
@@ -2594,10 +2599,9 @@ textarea:focus {
 }
 
 @media (min-width: 1024px) {
-  /* 选词卡撑满一屏：左栏贴到视口底端，词多时只滚词格本身。 */
+  /* 选词卡撑满页脚以上的剩余高：高度由 body 弹柱分配，词多时只滚词格本身。 */
   #view-write.layout {
     align-items: stretch;
-    height: calc(100svh - var(--nav) - var(--s-6) - var(--s-8));
   }
 
   #view-write .pickrow {
