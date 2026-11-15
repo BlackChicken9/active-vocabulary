@@ -351,21 +351,14 @@ export function mountWritingPanel(
     const fill = (index / (LENGTH_OPTIONS.length - 1)) * 100;
     return `
       <div class="lengthbar">
-        <span class="lengthbar__label">篇幅</span>
         <div class="lenbar">
-          <input type="range" class="lenbar__range" id="len-range" min="0" max="${
-            LENGTH_OPTIONS.length - 1
-          }" step="1" value="${index}" aria-label="篇幅档位" ${busy ? 'disabled' : ''}
-            style="--fill:${fill}%">
-          <span class="lenbar__bubble" style="--x:${fill}%">${
-            LENGTH_OPTIONS[index].label
-          } · ${lengthLine(spec)}</span>
-          <div class="lenbar__ticks" style="grid-template-columns:repeat(${
-            LENGTH_OPTIONS.length
-          },1fr)" aria-hidden="true">
-            ${LENGTH_OPTIONS.map(
-              (o) => `<span class="${o.id === lengthChoice ? 'on' : ''}">${o.label}</span>`,
-            ).join('')}
+          <span class="lengthbar__label">篇幅</span>
+          <div class="lenbar__cap">
+            <span class="lenbar__value">${LENGTH_OPTIONS[index].label} · ${lengthLine(spec)}</span>
+            <input type="range" class="lenbar__range" id="len-range" min="0" max="${
+              LENGTH_OPTIONS.length - 1
+            }" step="1" value="${index}" aria-label="篇幅档位" ${busy ? 'disabled' : ''}
+              style="--fill:${fill}%">
           </div>
         </div>
         <p class="hint" id="length-hint">${lengthBasis()}：${lengthLine(spec)}</p>
@@ -808,14 +801,8 @@ export function mountWritingPanel(
       const fill = `${(index / (LENGTH_OPTIONS.length - 1)) * 100}%`;
       range.style.setProperty('--fill', fill);
       const spec = currentSpec();
-      const bubble = lengthBar.querySelector<HTMLElement>('.lenbar__bubble');
-      if (bubble) {
-        bubble.style.setProperty('--x', fill);
-        bubble.textContent = `${LENGTH_OPTIONS[index].label} · ${lengthLine(spec)}`;
-      }
-      lengthBar.querySelectorAll<HTMLElement>('.lenbar__ticks span').forEach((tick, at) => {
-        tick.classList.toggle('on', at === index);
-      });
+      const value = lengthBar.querySelector<HTMLElement>('.lenbar__value');
+      if (value) value.textContent = `${LENGTH_OPTIONS[index].label} · ${lengthLine(spec)}`;
       const hint = lengthBar.querySelector<HTMLElement>('#length-hint');
       if (hint) hint.textContent = `${lengthBasis()}：${lengthLine(spec)}`;
       const warn = lengthBar.querySelector<HTMLElement>('#length-warn');

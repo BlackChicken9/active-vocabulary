@@ -852,37 +852,70 @@ textarea:focus {
   flex: none;
 }
 
-/* 篇幅滑条：圆头胶囊轨道 + 圆旋钮（iOS 音量条样式）；
-   赭红填充表示已过区段，纸白旋钮带赭红描边，拖动/聚焦时旋钮上方浮出当前篇幅。 */
+/* 篇幅滑条 = 一颗很宽的胶囊：档名与句数词数直接写在胶囊里，旋钮从文字上滑过；
+   已过区段给一层 14% 赭红薄染，未过区段保持纸面，与「篇幅」标签同一行。 */
 .lenbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+}
+
+.lenbar__cap {
   position: relative;
-  width: min(100%, 520px);
+  flex: 1 1 auto;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--raised);
+  box-shadow: inset 0 1px 0 color-mix(in oklab, #fffaf0 55%, transparent);
+}
+
+.lenbar__cap:has(.lenbar__range:disabled) {
+  opacity: 0.45;
+}
+
+.lenbar__cap:has(.lenbar__range:focus-visible) {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
+}
+
+.lenbar__value {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 18px;
+  color: var(--ink);
+  font-size: var(--t-small);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 .lenbar__range {
   --fill: 0%;
   appearance: none;
   -webkit-appearance: none;
-  display: block;
+  position: absolute;
+  inset: 0;
   width: 100%;
-  height: 28px;
+  height: 100%;
   margin: 0;
   background: transparent;
   cursor: pointer;
 }
 
-.lenbar__range:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
 .lenbar__range::-webkit-slider-runnable-track {
-  height: 8px;
+  height: 100%;
   border-radius: 999px;
   background: linear-gradient(
     to right,
-    var(--accent) 0 var(--fill),
-    color-mix(in oklab, var(--ink) 16%, transparent) var(--fill) 100%
+    color-mix(in oklab, var(--accent) 14%, transparent) 0 var(--fill),
+    transparent var(--fill) 100%
   );
 }
 
@@ -890,7 +923,7 @@ textarea:focus {
   -webkit-appearance: none;
   width: 20px;
   height: 20px;
-  margin-top: -6px;
+  margin-top: 8px;
   border: 2px solid var(--accent);
   border-radius: 50%;
   background: var(--p-raised);
@@ -898,15 +931,15 @@ textarea:focus {
 }
 
 .lenbar__range::-moz-range-track {
-  height: 8px;
+  height: 100%;
   border-radius: 999px;
-  background: color-mix(in oklab, var(--ink) 16%, transparent);
+  background: transparent;
 }
 
 .lenbar__range::-moz-range-progress {
-  height: 8px;
+  height: 100%;
   border-radius: 999px;
-  background: var(--accent);
+  background: color-mix(in oklab, var(--accent) 14%, transparent);
 }
 
 .lenbar__range::-moz-range-thumb {
@@ -916,54 +949,6 @@ textarea:focus {
   border-radius: 50%;
   background: var(--p-raised);
   box-shadow: 0 1px 2px rgb(58 40 22 / 0.25);
-}
-
-.lenbar__range:focus-visible {
-  outline: 2px solid var(--action);
-  outline-offset: 4px;
-}
-
-/* 气泡跟旋钮走（--x 与填充同值），只在拖动或键盘聚焦时出现。 */
-.lenbar__bubble {
-  position: absolute;
-  top: -10px;
-  left: var(--x, 0%);
-  translate: -50% -100%;
-  padding: 3px 10px;
-  border: 1px solid color-mix(in oklab, var(--accent) 40%, transparent);
-  border-radius: 999px;
-  background: var(--raised);
-  color: var(--ink);
-  font-size: var(--t-label);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 120ms var(--ease);
-  z-index: 1;
-}
-
-.lenbar__range:active + .lenbar__bubble,
-.lenbar__range:focus-visible + .lenbar__bubble {
-  opacity: 1;
-}
-
-.lenbar__ticks {
-  display: grid;
-  width: 100%;
-  margin-top: 2px;
-  color: var(--muted);
-  font-size: var(--t-label);
-  line-height: 1.2;
-}
-
-.lenbar__ticks span {
-  text-align: center;
-}
-
-.lenbar__ticks span.on {
-  color: var(--accent);
-  font-weight: 500;
 }
 
 .seg {
