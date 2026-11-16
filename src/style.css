@@ -511,6 +511,9 @@ html[data-buttons='pill'] .btn--primary:disabled::after {
 }
 
 .topnav__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 6px 2px;
   border: 0;
   background: transparent;
@@ -520,6 +523,16 @@ html[data-buttons='pill'] .btn--primary:disabled::after {
   transition:
     color 120ms var(--ease),
     box-shadow 120ms var(--ease);
+}
+
+.topnav__btn svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .topnav__btn[aria-pressed='true'] {

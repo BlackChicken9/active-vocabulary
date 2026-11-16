@@ -26,9 +26,15 @@ app.innerHTML = `
       </div>
       <div class="tally" id="tally" aria-live="polite" aria-label="词库掌握度统计"></div>
       <nav class="topnav" aria-label="视图切换">
-        <button type="button" class="topnav__btn" data-view="write" aria-pressed="true">写作</button>
-        <button type="button" class="topnav__btn" data-view="words" aria-pressed="false">词本</button>
-        <button type="button" class="topnav__btn" data-view="saved" aria-pressed="false">习作集</button>
+        <button type="button" class="topnav__btn" data-view="write" aria-pressed="true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>写作
+        </button>
+        <button type="button" class="topnav__btn" data-view="words" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>词本
+        </button>
+        <button type="button" class="topnav__btn" data-view="saved" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>习作集
+        </button>
       </nav>
     </div>
   </header>
