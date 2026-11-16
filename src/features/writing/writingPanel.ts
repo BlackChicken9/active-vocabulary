@@ -568,7 +568,9 @@ export function mountWritingPanel(
         ${
           explainBusy
             ? '<p class="busy"><span class="spinner" aria-hidden="true"></span>AI 正在逐句翻译讲解…</p>'
-            : ''
+            : explainEngine
+              ? `<p class="hint warn">逐句讲解没拿到：${escapeHtml(explainEngine)}，切「逐句讲解」可单句重试。</p>`
+              : ''
         }
         ${trained.length ? `<p class="mastery">示范已读，掌握度回写：${changeLine(trained)}</p>` : ''}
         ${engineLine(modelEngine)}

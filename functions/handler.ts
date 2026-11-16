@@ -12,8 +12,8 @@ interface TargetWord {
 }
 
 const DEFAULT_BASE_URL = 'https://api.deepseek.com/v1';
-// 旗舰档 v4-pro 的叙事/逻辑明显好于 flash（实测对比后切换）；flash 只剩低价值快速路径可用。
-const DEFAULT_MODEL = 'deepseek-v4-pro';
+// flash（轻档，即旧 deepseek-chat 改名供应）性价比优先；v4-pro 质量更强但费用数倍，要切在站点 env 里配 AI_MODEL。
+const DEFAULT_MODEL = 'deepseek-flash';
 const MAX_BODY = 12_000;
 const MAX_TEXT = 2_000;
 const MAX_RAW = 6_000;
@@ -522,9 +522,7 @@ export function createHandler(env: GatewayEnv = {}) {
       const words = parseWords(body.words) ?? [];
       const numbered = sentences.map((sentence, index) => `${index + 1}. ${sentence}`).join('\n');
       try {
-        // 讲解最多 12 句，按每句译文+结构+成分估 4000 token 够写完 JSON；
-        // 真被截断就整路退成本地兜底，不会拿半截译文糊弄学习者。
-        // v4-pro 推理更慢，超时放宽到 60s。
+        // 逐句讲解是机械型任务，flash 足够且便宜；token 给到 4000 防止 JSON 截断。
         const { data, model } = await chat(cfg, explainPrompt(words, sentences.length), numbered, {
           maxTokens: 4_000,
           timeoutMs: 60_000,
@@ -552,7 +550,6 @@ export function createHandler(env: GatewayEnv = {}) {
         const length = parseLength(body.length, words.length);
         const { data, model } = await chat(cfg, modelTextPrompt(words, length), `题干：${prompt}`, {
           temperature: 0.7,
-          // v4-pro 写百词短文偏慢，20s 会偶发掐断，放宽到 45s。
           timeoutMs: 45_000,
         });
         // 只有这次真生成出来才算用掉一次：上游失败不该扣掉访客的机会。
