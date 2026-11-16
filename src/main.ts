@@ -1,7 +1,6 @@
 import './style.css';
 import type { MasteryStatus } from './types';
 import { loadWords } from './features/words/wordStore';
-import { loadSaved } from './features/writing/savedStore';
 import { clearModelKey, keyTail, loadModelKey, saveModelKey } from './modelKey';
 import { mountWordsPanel, type WordsPanel } from './features/words/wordsPanel';
 import { mountWritingPanel } from './features/writing/writingPanel';
@@ -26,21 +25,13 @@ app.innerHTML = `
         <h1 class="brand__name">主动词库</h1>
       </div>
       <div class="tally" id="tally" aria-live="polite" aria-label="词库掌握度统计"></div>
+      <nav class="topnav" aria-label="视图切换">
+        <button type="button" class="topnav__btn" data-view="write" aria-pressed="true">写作</button>
+        <button type="button" class="topnav__btn" data-view="words" aria-pressed="false">词本</button>
+        <button type="button" class="topnav__btn" data-view="saved" aria-pressed="false">习作集</button>
+      </nav>
     </div>
   </header>
-  <nav class="viewnav" aria-label="视图切换">
-    <div class="viewnav__in seg" role="group" aria-label="写作、词本与习作集">
-      <button type="button" class="seg-btn" data-view="write" aria-pressed="true">
-        <strong>写作</strong><small>按词出题 · 逐句点评</small>
-      </button>
-      <button type="button" class="seg-btn" data-view="words" aria-pressed="false">
-        <strong>词本</strong><small>粘笔记收词 · 学搭配</small>
-      </button>
-      <button type="button" class="seg-btn" data-view="saved" aria-pressed="false">
-        <strong>习作集</strong><small id="saved-sub">存下的示范与批改</small>
-      </button>
-    </div>
-  </nav>
   <main class="layout layout--view" id="view-write">
     <aside class="card bank m-nolift" id="bank" aria-labelledby="bank-h"></aside>
     <section class="desk" id="desk" aria-label="写作台" tabindex="-1"></section>
@@ -146,16 +137,9 @@ const views: Record<View, HTMLElement> = {
   words: document.querySelector<HTMLElement>('#view-words')!,
   saved: document.querySelector<HTMLElement>('#view-saved')!,
 };
-const viewButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('.viewnav .seg-btn'));
+const viewButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('.topnav__btn'));
 const wordsRoot = document.querySelector<HTMLElement>('#words-panel')!;
 const savedRoot = document.querySelector<HTMLElement>('#saved-panel')!;
-const savedSub = document.querySelector<HTMLElement>('#saved-sub')!;
-
-/** 顶栏那档随时告诉用户习作集里现在有几篇——存完不用切过去才知道有没有生效。 */
-function renderSavedCount(): void {
-  const n = loadSaved().length;
-  savedSub.textContent = n ? `存下的示范与批改 · ${n} 篇` : '存下的示范与批改';
-}
 
 const writing = mountWritingPanel(
   document.querySelector<HTMLElement>('#bank')!,
@@ -163,7 +147,7 @@ const writing = mountWritingPanel(
   renderTally,
   () => go('words'),
   () => go('saved'),
-  renderSavedCount,
+  () => undefined,
 );
 let words: WordsPanel | null = null;
 let saved: SavedPanel | null = null;
@@ -198,7 +182,7 @@ function showView(view: View): void {
       });
     words.redraw();
   } else if (view === 'saved') {
-    saved = saved ?? mountSavedPanel(savedRoot, () => go('write'), renderSavedCount);
+    saved = saved ?? mountSavedPanel(savedRoot, () => go('write'), () => undefined);
     saved.redraw();
   } else {
     writing.redraw();
@@ -223,5 +207,4 @@ for (const button of viewButtons) {
 
 window.addEventListener('hashchange', () => showView(viewFromHash() ?? current));
 
-renderSavedCount();
 showView(viewFromHash() ?? 'write');
