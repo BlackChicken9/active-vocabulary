@@ -13,7 +13,7 @@ import type {
 import { ApiError, requestJson } from './api';
 import { loadModelKey } from '../../modelKey';
 import { generateMockFeedback } from './mockFeedback';
-import { generateExplanation, generateModelText, type ModelText } from './modelText';
+import { generateExplanation, type ModelText } from './modelText';
 import { splitSentences } from './passage';
 import { taskLength } from './passageLength';
 
@@ -31,7 +31,7 @@ const FALLBACK_MESSAGES: Record<string, string> = {
   service_not_configured: '网关没配 DeepSeek 密钥',
   model_key_invalid: '你的 DeepSeek 密钥格式不对（页脚可改）',
   model_key_rejected: '你的 DeepSeek 密钥被拒（页脚可换）',
-  trial_exceeded: '免费示范的 5 次已用完，页脚粘自己的 DeepSeek 密钥继续',
+  trial_exceeded: '免费示范次数已用完',
   upstream_unavailable: 'AI 网关调用上游失败',
   invalid_request: 'AI 网关拒绝了请求参数',
   access_denied: '没有访问 AI 网关的权限',
@@ -181,9 +181,10 @@ export async function requestModelText(
       trialLeft: trialLeftOf(data),
     };
   } catch (error) {
+    // 写不出示范就如实说，不拿词卡例句拼一段假的糊弄人。
     return {
-      data: generateModelText(task, words),
-      degraded: `${reason(error)}，示范短文改由词本例句拼接`,
+      data: { text: '', wordIds: [] },
+      degraded: reason(error),
       model: null,
       trialLeft: error instanceof ApiError && error.code === 'trial_exceeded' ? 0 : null,
     };
@@ -303,6 +304,7 @@ export async function requestGloss(term: string, sentence: string): Promise<AiRe
 export interface IntakeCard {
   headword: string;
   pos: string;
+  phonetic: string;
   meaningZh: string;
   theme: string;
   examples: string[];
@@ -313,6 +315,12 @@ const MAX_INTAKE = 30;
 
 function text(value: unknown, max: number): string {
   return typeof value === 'string' ? value.trim().slice(0, max) : '';
+}
+
+/** 模型有时不给音标加斜杠，卡片按词典惯例统一成 /…/ 形态。 */
+function normalizeIpa(value: string): string {
+  if (!value) return '';
+  return /^[/［【[]/.test(value) ? value : `/${value}/`;
 }
 
 function readIntakeCards(value: unknown): IntakeCard[] {
@@ -336,6 +344,7 @@ function readIntakeCards(value: unknown): IntakeCard[] {
       return {
         headword: text(card.headword, 64),
         pos: text(card.pos, 16),
+        phonetic: normalizeIpa(text(card.phonetic, 48)),
         meaningZh: text(card.meaningZh, 160),
         theme: text(card.theme, 24),
         examples,
@@ -378,7 +387,7 @@ function splitLocally(raw: string): IntakeCard[] {
       const key = headword.toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);
-      cards.push({ headword, pos: '', meaningZh: '', theme: '', examples: [], collocations: [] });
+      cards.push({ headword, pos: '', phonetic: '', meaningZh: '', theme: '', examples: [], collocations: [] });
       if (cards.length >= MAX_INTAKE) return cards;
     }
   }

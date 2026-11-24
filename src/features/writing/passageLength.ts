@@ -3,27 +3,27 @@ import { splitSentences } from './passage';
 
 export const LENGTH_OPTIONS: { id: LengthChoice; label: string; hint: string }[] = [
   { id: 'auto', label: '自动', hint: '按词数' },
-  { id: 'short', label: '短', hint: '2~3 句' },
-  { id: 'medium', label: '中', hint: '4~6 句' },
-  { id: 'long', label: '长', hint: '7~10 句' },
+  { id: 'short', label: '短', hint: '3~4 句' },
+  { id: 'medium', label: '中', hint: '5~7 句' },
+  { id: 'long', label: '长', hint: '8~12 句' },
 ];
 
 const PRESETS: Record<Exclude<LengthChoice, 'auto'>, PassageLength> = {
-  short: { minSentences: 2, maxSentences: 3, minWords: 30, maxWords: 60 },
-  medium: { minSentences: 4, maxSentences: 6, minWords: 60, maxWords: 110 },
-  long: { minSentences: 7, maxSentences: 10, minWords: 100, maxWords: 180 },
+  short: { minSentences: 3, maxSentences: 4, minWords: 50, maxWords: 90 },
+  medium: { minSentences: 5, maxSentences: 7, minWords: 90, maxWords: 160 },
+  long: { minSentences: 8, maxSentences: 12, minWords: 130, maxWords: 260 },
 };
 
-/** 自动档：一个词至少摊到一句，最多多一句把场景收尾；每句按 12~16 词估，别让两段词写成小作文。 */
+/** 自动档：一个词至少摊到一句，再多一句收尾；每句按 15~22 词估——句子长一点，逻辑推进才有地方放。 */
 export function passageSpec(choice: LengthChoice, wordCount: number): PassageLength {
   if (choice !== 'auto') return PRESETS[choice];
-  const minSentences = Math.min(8, Math.max(2, wordCount));
+  const minSentences = Math.min(9, Math.max(3, wordCount + 1));
   const maxSentences = minSentences + 1;
   return {
     minSentences,
     maxSentences,
-    minWords: minSentences * 12,
-    maxWords: maxSentences * 16,
+    minWords: minSentences * 15,
+    maxWords: maxSentences * 22,
   };
 }
 

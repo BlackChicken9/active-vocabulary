@@ -12,12 +12,13 @@ interface TargetWord {
 }
 
 const DEFAULT_BASE_URL = 'https://api.deepseek.com/v1';
-const DEFAULT_MODEL = 'deepseek-chat';
+// flash（轻档，即旧 deepseek-chat 改名供应）性价比优先；v4-pro 质量更强但费用数倍，要切在站点 env 里配 AI_MODEL。
+const DEFAULT_MODEL = 'deepseek-flash';
 const MAX_BODY = 12_000;
 const MAX_TEXT = 2_000;
 const MAX_RAW = 6_000;
 const MAX_CARDS = 30;
-const MAX_GLOSS = 120;
+const MAX_GLOSS = 60;
 const MAX_EXPLAIN_SENTENCES = 12;
 /** 访客自带密钥：走请求头，不进 URL、不进日志，也只在这一次请求里活着。 */
 const MODEL_KEY_HEADER = 'x-model-key';
@@ -154,7 +155,7 @@ async function chat(
   env: GatewayEnv,
   prompt: string,
   user: string,
-  options: { maxTokens?: number; timeoutMs?: number } = {},
+  options: { maxTokens?: number; timeoutMs?: number; temperature?: number } = {},
 ): Promise<{ data: unknown; model: string }> {
   const model = env.AI_MODEL || DEFAULT_MODEL;
   const response = await fetch(`${env.AI_BASE_URL ?? DEFAULT_BASE_URL}/chat/completions`, {
@@ -167,7 +168,8 @@ async function chat(
     },
     body: JSON.stringify({
       model,
-      temperature: 0.2,
+      // 判定类任务压低落随机性；写文章一路调高，0.2 只会写出四平八稳的拼盘。
+      temperature: options.temperature ?? 0.2,
       // 单次生成默认最多 4096 token，讲解那一路另给更低的封顶。
       max_tokens: options.maxTokens ?? 4096,
       response_format: { type: 'json_object' },
@@ -211,9 +213,15 @@ function feedbackPrompt(words: TargetWord[]): string {
 
 function modelTextPrompt(words: TargetWord[], length: PassageLength): string {
   return [
-    '你是英语写作助教，为学习者写一段「示范答案」，把每个目标词自然用出来，并尽量带上它的常见搭配。',
-    `只输出 JSON：{"text":"${length.minSentences}~${length.maxSentences} 句英文（约 ${length.minWords}~${length.maxWords} 词），连贯成一段","wordIds":["实际用到的目标词 id"]}。`,
-    '句数与词数都要落在给定区间内；每个目标词至少出现一次；不要中文，不要解释，不要列出词表。',
+    '你是资深英语写作教练。写一篇可直接当范文的英文微型短文，把目标词自然融进去——先是一篇文章，词服务于文，绝不按词表逐条造句。',
+    '先想后写，按以下步骤：',
+    '1. 选定一个主人公和一个具体事件，按「起因 → 发展（受阻或转折）→ 行动 → 结果」四拍在心里列提纲，全文只写这一件事；',
+    '2. 每句只推进一拍：或给出新细节，或承接上一句（指代、因果、转折、递进）；任何一句删掉都会伤到故事，才算强相关；',
+    '3. 主人公、时间线、场景前后一致：中途不换人、不换话题；禁止 Firstly/Secondly 式并列罗列，每句必须咬住上一句；',
+    '4. 用具体的人、事、细节推进，不写空泛套话；时态与视角全文一致；目标词用自然形态和常见搭配融进情节，不许为塞词硬造别扭句；',
+    `5. 篇幅必须达标：${length.minSentences}~${length.maxSentences} 句、约 ${length.minWords}~${length.maxWords} 词，只写一段。`,
+    '6. 写完自查：每个 it/they/this 都有明确所指；删掉与主线无关的句子；首句立场景、末句有回响。',
+    '只输出 JSON：{"text":"英文短文","wordIds":["实际用到的目标词 id"]}。不要中文、解释或词表。',
     '目标词表：',
     describe(words),
   ].join('\n');
@@ -285,11 +293,12 @@ function normalizeModelText(data: unknown, words: TargetWord[]) {
 function explainPrompt(words: TargetWord[], count: number): string {
   return [
     '你是英语写作助教，为学习者逐句讲解一段示范短文：翻译、句子结构、生词释义。',
-    '只输出 JSON：{"sentences":[{"zh":"这一句的简体中文翻译","structure":"中文一句话讲清主干与从句","marked":"[主语 ...][谓语 ...][宾语 ...]"}],"glossary":["原文词|词性|中文释义"]}。',
+    '只输出 JSON：{"sentences":[{"zh":"这一句自然流畅的简体中文翻译（意译）","structure":"中文一句话讲清主干与从句","marked":"[主语 ...][谓语 ...][宾语 ...]"}],"glossary":["原文词|词性|中文释义"]}。',
     `sentences 必须正好 ${count} 项，与下面编号一一对应，不要合并、拆分或改写英文原句。`,
+    'zh 要像中文原创的句子：按中文习惯调整语序、意译，不逐词直译、没有翻译腔（避免「被/进行/使得」式的生硬表达）；意思必须忠实原句，不增删信息。',
     'marked 把该句按顺序切成 2~6 段：方括号里先写成分名（主语/谓语/宾语/表语/补语/定语/状语/从句/连接词），空格后原样抄写那一段英文；各段拼起来要能还原整句。',
     'structure 只讲结构（谁是主语、谓语是什么、哪个是从句、修饰谁），不要重复译文，不要泛泛而谈。',
-    'glossary 覆盖文中所有实词（名词、动词、形容词、副词）和固定搭配，用文中出现的形态，最多 120 条，释义 12 字以内；目标词也要给，释义与词卡一致。',
+    'glossary 只收影响理解的实词与固定搭配（最多 60 条），用文中出现的形态，释义 12 字以内；目标词必收，释义与词卡一致。',
     '全部中文用简体，不要输出 Markdown 或额外解释。',
     words.length ? '目标词表：' : '',
     words.length ? describe(words) : '',
@@ -385,7 +394,7 @@ function normalizeGloss(data: unknown, term: string) {
 function intakePrompt(): string {
   return [
     '你是英语词卡整理助手。用户会粘贴任意格式的内容：可能只是一串单词，也可能是带释义、派生词和例句的笔记。',
-    '只输出 JSON：{"words":[{"headword":"英文词头或短语","pos":"词性，如 v. / adj. / n. / 短语；原文没有就留空字符串","meaningZh":"简体中文释义","theme":"这批词共同的话题，简体中文 2~6 个字，如「海洋与环境」；判断不出就留空字符串","examples":["一句英文例句"],"collocations":[{"phrase":"英文搭配","gloss":"中文说明"}]}]}。',
+    '只输出 JSON：{"words":[{"headword":"英文词头或短语","pos":"词性，如 v. / adj. / n. / 短语；原文没有就留空字符串","phonetic":"英式 IPA 音标，形如 /ˈmɪtɪɡeɪt/；拿不准就留空字符串","meaningZh":"简体中文释义","theme":"这批词共同的话题，简体中文 2~6 个字，如「海洋与环境」；判断不出就留空字符串","examples":["一句英文例句"],"collocations":[{"phrase":"英文搭配","gloss":"中文说明"}]}]}。',
     '规则：原文已有的释义、派生词、例句照抄，不要改写；只有原文缺失时才由你补，补的例句要短、日常可用；',
     '搭配必须是能整块复用的词块（如 early intervention），不要拿派生词充当搭配；同一次粘贴的词尽量归到同一个 theme；',
     '词头去重；最多 30 条；不要输出解释。',
@@ -412,6 +421,7 @@ function normalizeIntake(data: unknown) {
   const words: {
     headword: string;
     pos: string;
+    phonetic: string;
     meaningZh: string;
     theme: string;
     examples: string[];
@@ -437,6 +447,7 @@ function normalizeIntake(data: unknown) {
     words.push({
       headword,
       pos: asString(card.pos, 16) ?? '',
+      phonetic: asString(card.phonetic, 48) ?? '',
       meaningZh: asString(card.meaningZh, 160) ?? '',
       theme: asString(card.theme, 24) ?? '',
       examples: asStringList(card.examples, 2, 4, 240),
@@ -511,11 +522,11 @@ export function createHandler(env: GatewayEnv = {}) {
       const words = parseWords(body.words) ?? [];
       const numbered = sentences.map((sentence, index) => `${index + 1}. ${sentence}`).join('\n');
       try {
-        // 讲解最多 12 句，按每句译文+结构+成分估 4000 token 够写完 JSON；
-        // 真被截断就整路退成本地兜底，不会拿半截译文糊弄学习者。
+        // 讲解输出大（12 句 × 译文/结构/成分 + 词汇表）：token 给足防 JSON 截断，
+        // 超时 90s 抗高峰抖动；词汇表已收紧到 60 条，正常 10s 级返回。
         const { data, model } = await chat(cfg, explainPrompt(words, sentences.length), numbered, {
-          maxTokens: 4_000,
-          timeoutMs: 45_000,
+          maxTokens: 8_000,
+          timeoutMs: 90_000,
         });
         return json({ ok: true, model, explanation: normalizeExplanation(data, sentences) });
       } catch (error) {
@@ -538,7 +549,10 @@ export function createHandler(env: GatewayEnv = {}) {
       if (path === 'model-text') {
         const prompt = asString(body.prompt, 600) ?? '';
         const length = parseLength(body.length, words.length);
-        const { data, model } = await chat(cfg, modelTextPrompt(words, length), `题干：${prompt}`);
+        const { data, model } = await chat(cfg, modelTextPrompt(words, length), `题干：${prompt}`, {
+          temperature: 0.7,
+          timeoutMs: 45_000,
+        });
         // 只有这次真生成出来才算用掉一次：上游失败不该扣掉访客的机会。
         const response = json({
           ok: true,

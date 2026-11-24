@@ -148,6 +148,8 @@ export function mountWritingPanel(
   let query = '';
   let mode: Mode = 'self';
   let model: ModelText | null = null;
+  // 生成失败时如实把原因摆出来；不拿拼凑文本冒充示范。
+  let modelError: string | null = null;
   // 示范是按哪一档篇幅写的：改了篇幅，句数/词数仍按当时那档判断，不然会平白显示「偏长」。
   let modelLength: PassageLength | null = null;
   let trained: MasteryChange[] = [];
@@ -189,6 +191,7 @@ export function mountWritingPanel(
         ${pathButton('b')}
       </div>
       <p class="hint path-hint" id="path-hint"></p>
+      <p class="hint busy-line" id="busy-line" hidden></p>
     </div>
     <div id="work-slot"></div>`;
 
@@ -222,6 +225,7 @@ export function mountWritingPanel(
 
   function resetOutput(): void {
     model = null;
+    modelError = null;
     modelLength = null;
     trained = [];
     feedback = null;
@@ -520,7 +524,9 @@ export function mountWritingPanel(
     if (busy === 'model') {
       return '<p class="busy"><span class="spinner" aria-hidden="true"></span>AI 正在写示范…</p>';
     }
-    if (!model) return '';
+    if (!model) {
+      return modelError ? `<p class="hint warn">${escapeHtml(modelError)}</p>` : '';
+    }
     const active = task!;
     const marked = words.filter((w) => model!.wordIds.includes(w.id));
     const keys = targetKeys(
@@ -559,7 +565,13 @@ export function mountWritingPanel(
               )}</p>${wholeTranslation(notes)}</div>`
             : `<ol class="sents">${notes.map((note, index) => sentenceCard(note, index, keys)).join('')}</ol>`
         }
-        <p class="statsline">${statsLine(model.text, modelLength ?? spec)}</p>
+        ${
+          explainBusy
+            ? '<p class="busy"><span class="spinner" aria-hidden="true"></span>AI 正在逐句翻译讲解…</p>'
+            : explainEngine
+              ? `<p class="hint warn">逐句讲解没拿到：${escapeHtml(explainEngine)}，切「逐句讲解」可单句重试。</p>`
+              : ''
+        }
         ${trained.length ? `<p class="mastery">示范已读，掌握度回写：${changeLine(trained)}</p>` : ''}
         ${engineLine(modelEngine)}
       </div>`;
@@ -673,6 +685,13 @@ export function mountWritingPanel(
     lengthBar.innerHTML = lengthBlock();
     pathHint.textContent = pathHintLine();
     pathHint.hidden = !pathHint.textContent;
+    // 生成要 10~30 秒，A/B 旁边必须有一颗看得见的转圈，别让用户以为点了没反应。
+    const busyLine = deskRoot.querySelector<HTMLElement>('#busy-line');
+    if (busyLine) {
+      if (busy === 'model') busyLine.innerHTML = '<span class="spinner" aria-hidden="true"></span>AI 正在生成示范…';
+      else if (busy === 'self') busyLine.innerHTML = '<span class="spinner" aria-hidden="true"></span>AI 正在点评…';
+      else busyLine.hidden = true;
+    }
     pathsBox.dataset.active = task ? (mode === 'model' ? 'a' : 'b') : 'none';
     const pathsDisabled = busy !== null || (!task && selected.length < MIN_TARGET_WORDS);
     pathsBox.querySelectorAll<HTMLButtonElement>('.path').forEach((btn) => {
@@ -922,13 +941,23 @@ export function mountWritingPanel(
       busy = 'model';
       render();
       const result = await requestModelText(active, loadWords());
+      busy = null;
+      gatewayModel = result.model;
+      trialLeft = result.trialLeft ?? null;
+      if (!result.data.text.trim()) {
+        model = null;
+        modelLength = null;
+        modelError = result.degraded ?? 'AI 这次没有给出示范';
+        render();
+        pathsBox.querySelector<HTMLButtonElement>(`#path-${path}`)?.focus();
+        return;
+      }
+      modelError = null;
       model = result.data;
       modelLength = taskLength(active);
       // 新示范一落地先看整段：连着把这段话读完，再切「逐句讲解」逐句拆。
       passageView = 'whole';
       modelEngine = result.degraded;
-      gatewayModel = result.model;
-      trialLeft = result.trialLeft ?? null;
       trained = markTraining(result.data.wordIds);
       busy = null;
       onMasteryChanged();
