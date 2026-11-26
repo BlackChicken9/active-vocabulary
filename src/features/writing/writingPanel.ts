@@ -341,12 +341,21 @@ export function mountWritingPanel(
       <div class="lengthbar">
         <div class="lenbar">
           <span class="lengthbar__label">篇幅</span>
-          <div class="lenbar__cap">
-            <span class="lenbar__value">${LENGTH_OPTIONS[index].label} · ${spec.minSentences}~${spec.maxSentences} 句</span>
-            <input type="range" class="lenbar__range" id="len-range" min="0" max="${
-              (LENGTH_OPTIONS.length - 1) * 100
-            }" step="1" value="${index * 100}" aria-label="篇幅档位" ${busy ? 'disabled' : ''}
-              style="--fill:${fill}%">
+          <div class="lenbar__control">
+            <div class="lenbar__cap">
+              <span class="lenbar__value">${LENGTH_OPTIONS[index].label} · ${spec.minSentences}~${spec.maxSentences} 句</span>
+              <input type="range" class="lenbar__range" id="len-range" min="0" max="${
+                (LENGTH_OPTIONS.length - 1) * 100
+              }" step="1" value="${index * 100}" aria-label="篇幅档位" ${busy ? 'disabled' : ''}
+                style="--fill:${fill}%">
+            </div>
+            <div class="lenbar__stops" role="group" aria-label="篇幅档位快选">
+              ${LENGTH_OPTIONS.map(
+                (opt, i) => `<button type="button" class="lenbar__stop" data-length-stop="${i}" aria-pressed="${
+                  i === index
+                }" ${busy ? 'disabled' : ''}>${opt.label}</button>`,
+              ).join('')}
+            </div>
           </div>
         </div>
         <p class="hint warn" id="length-warn" ${crowded ? '' : 'hidden'}>${
@@ -392,7 +401,16 @@ export function mountWritingPanel(
                  : '<div class="pickrow empty"><p class="hint">没有匹配的词。</p></div>'
              }
              <div class="bank__foot">
-               <p class="hint">已选 ${selected.length}/${MAX_TARGET_WORDS}</p>
+               <div class="bank__sel">
+                 <p class="hint">已选 ${selected.length}/${MAX_TARGET_WORDS}</p>
+                 ${
+                   selected.length > 0
+                     ? `<button type="button" class="wlink bank__clear" id="bank-clear" ${
+                         busy ? 'disabled' : ''
+                       }>清空</button>`
+                     : ''
+                 }
+               </div>
                <button type="button" class="btn btn--secondary btn--sm" id="open-words">去词本收词</button>
              </div>`
           : `<div class="pickrow empty">
@@ -404,6 +422,18 @@ export function mountWritingPanel(
     const search = bankRoot.querySelector<HTMLInputElement>('#bank-search');
     search?.addEventListener('input', () => {
       query = search.value;
+      render();
+    });
+    search?.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape' || !query) return;
+      event.preventDefault();
+      query = '';
+      render();
+    });
+
+    bankRoot.querySelector<HTMLButtonElement>('#bank-clear')?.addEventListener('click', () => {
+      if (busy || !selected.length) return;
+      selected = [];
       render();
     });
 
@@ -670,9 +700,13 @@ export function mountWritingPanel(
 
   function pathHintLine(): string {
     if (!task) {
-      return selected.length >= MIN_TARGET_WORDS
-        ? ''
-        : `先勾 ${MIN_TARGET_WORDS}~${MAX_TARGET_WORDS} 个词，再点 A 或 B。`;
+      if (selected.length >= MIN_TARGET_WORDS) {
+        return `已选 ${selected.length} 个词，点上方 A 或 B 开始。`;
+      }
+      if (selected.length > 0) {
+        return `还差 ${MIN_TARGET_WORDS - selected.length} 个词即可出题（已选 ${selected.length}/${MIN_TARGET_WORDS}~${MAX_TARGET_WORDS}）。`;
+      }
+      return `先勾 ${MIN_TARGET_WORDS}~${MAX_TARGET_WORDS} 个词，再点 A 或 B。`;
     }
     if (!sameSelection() && selected.length >= MIN_TARGET_WORDS) {
       return '勾选已改动：再点会按新词重新出题。';
@@ -790,7 +824,20 @@ export function mountWritingPanel(
         warn.textContent = `${count} 个词偏多，换「自动」或更长的档更稳。`;
         warn.hidden = !(count > spec.maxSentences);
       }
+      lengthBar.querySelectorAll<HTMLButtonElement>('[data-length-stop]').forEach((stop) => {
+        stop.setAttribute('aria-pressed', String(Number(stop.dataset.lengthStop) === index));
+      });
     }
+
+    lengthBar.querySelectorAll<HTMLButtonElement>('[data-length-stop]').forEach((stop) => {
+      stop.addEventListener('click', () => {
+        if (busy || !range) return;
+        const index = Number(stop.dataset.lengthStop);
+        range.value = String(index * 100);
+        range.dispatchEvent(new Event('input', { bubbles: true }));
+        range.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    });
 
     /** 值域放大 100 倍、步长 1：旋钮跟手连续滑（音量条手感），档位=就近取整百；
      * step=100 的写法旋钮会在四个点之间瞬移，就是「生硬」的根因。 */

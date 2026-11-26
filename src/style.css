@@ -258,18 +258,6 @@ html .card {
   --c-sh: rgb(58 40 22 / 0.09);
 }
 
-/* 主面板加第二道细线（外框 + 内框留 5px 纸边），像铜版画的版框；
-   里面的词卡、路径卡不套——每张卡都双线就成了噪声。 */
-.bank,
-.wb,
-.saved {
-  box-shadow:
-    inset 0 0 0 5px var(--card),
-    inset 0 0 0 6px color-mix(in oklab, var(--p-ink) 15%, transparent),
-    inset 0 1px 0 var(--c-hi),
-    0 1px 2px var(--c-sh);
-}
-
 .sub {
   margin-top: var(--s-2);
   color: color-mix(in oklab, var(--ink) 82%, var(--card));
@@ -540,6 +528,27 @@ html[data-buttons='pill'] .btn--primary:disabled::after {
   box-shadow: inset 0 -2px 0 var(--accent);
 }
 
+.topnav__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--raised);
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.topnav__btn[aria-pressed='true'] .topnav__count {
+  border-color: color-mix(in oklab, var(--accent) 40%, transparent);
+  color: var(--ink);
+}
+
 .topnav__btn:focus-visible {
   outline: 2px solid var(--action);
   outline-offset: 2px;
@@ -717,6 +726,17 @@ html[data-buttons='pill'] .btn--primary:disabled::after {
   flex-wrap: wrap;
   border-top: 1px solid var(--line);
   padding-top: var(--s-3);
+}
+
+.bank__sel {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--s-2);
+}
+
+.bank__clear {
+  margin-left: 0;
+  font-size: var(--t-label);
 }
 
 .desk {
@@ -953,25 +973,67 @@ textarea:focus {
   font-size: var(--t-label);
   font-weight: 500;
   flex: none;
+  padding-top: 8px;
 }
 
 /* 篇幅滑条 = 一颗很宽的胶囊：档名与句数词数直接写在胶囊里，旋钮从文字上滑过；
    已过区段给一层 14% 赭红薄染，未过区段保持纸面，与「篇幅」标签同一行。 */
 .lenbar {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--s-3);
   width: 100%;
 }
 
+.lenbar__control {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 0 1 420px;
+  min-width: 0;
+}
+
 .lenbar__cap {
   position: relative;
-  flex: 0 1 420px;
+  width: 100%;
   height: 36px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--raised);
   box-shadow: inset 0 1px 0 color-mix(in oklab, #fffaf0 55%, transparent);
+}
+
+.lenbar__stops {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px;
+}
+
+.lenbar__stop {
+  padding: 2px 6px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--muted);
+  font: 500 var(--t-label) / 1.2 var(--font-text);
+  cursor: pointer;
+  transition: color 120ms var(--ease);
+}
+
+.lenbar__stop[aria-pressed='true'] {
+  color: var(--accent);
+}
+
+.lenbar__stop:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .lenbar__stop:not(:disabled):hover {
+    color: var(--ink);
+  }
 }
 
 .lenbar__cap:has(.lenbar__range:disabled) {
@@ -1244,7 +1306,10 @@ textarea:focus {
 
 .path:disabled {
   cursor: not-allowed;
-  opacity: 0.5;
+  opacity: 0.56;
+  border-style: dashed;
+  background: transparent;
+  box-shadow: none;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -2596,11 +2661,15 @@ textarea:focus {
 @media screen and (prefers-reduced-motion: no-preference) {
   .topbar,
   .bank,
-  .desk {
+  .desk,
+  .wb,
+  .saved {
     animation: arrive calc(620ms * var(--site-motion)) cubic-bezier(0.22, 1, 0.36, 1) backwards;
   }
 
-  .bank {
+  .bank,
+  .wb,
+  .saved {
     animation-delay: 80ms;
   }
 

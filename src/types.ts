@@ -9,6 +9,8 @@ export interface Word {
   id: string;
   headword: string;
   pos?: string;
+  /** 英式 IPA，词条卡词头行用；intake 缺失时为空，卡片降级不显示。 */
+  phonetic?: string;
   meaningZh: string;
   examples: string[];
   collocations: Collocation[];
