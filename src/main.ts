@@ -1,6 +1,7 @@
 import './style.css';
 import type { MasteryStatus } from './types';
 import { loadWords } from './features/words/wordStore';
+import { loadSaved } from './features/writing/savedStore';
 import { clearModelKey, keyTail, loadModelKey, saveModelKey } from './modelKey';
 import { mountWordsPanel, type WordsPanel } from './features/words/wordsPanel';
 import { mountWritingPanel } from './features/writing/writingPanel';
@@ -33,7 +34,7 @@ app.innerHTML = `
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>词本
         </button>
         <button type="button" class="topnav__btn" data-view="saved" aria-pressed="false">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>习作集
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>习作集<span class="topnav__count" id="saved-count" hidden></span>
         </button>
       </nav>
     </div>
@@ -146,6 +147,14 @@ const views: Record<View, HTMLElement> = {
 const viewButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('.topnav__btn'));
 const wordsRoot = document.querySelector<HTMLElement>('#words-panel')!;
 const savedRoot = document.querySelector<HTMLElement>('#saved-panel')!;
+const savedCount = document.querySelector<HTMLElement>('#saved-count')!;
+
+/** 顶栏实时显示习作集篇数，保存或删除后不用切屏就能确认。 */
+function renderSavedCount(): void {
+  const n = loadSaved().length;
+  savedCount.textContent = String(n);
+  savedCount.hidden = n === 0;
+}
 
 const writing = mountWritingPanel(
   document.querySelector<HTMLElement>('#bank')!,
@@ -153,7 +162,7 @@ const writing = mountWritingPanel(
   renderTally,
   () => go('words'),
   () => go('saved'),
-  () => undefined,
+  renderSavedCount,
 );
 let words: WordsPanel | null = null;
 let saved: SavedPanel | null = null;
@@ -188,7 +197,7 @@ function showView(view: View): void {
       });
     words.redraw();
   } else if (view === 'saved') {
-    saved = saved ?? mountSavedPanel(savedRoot, () => go('write'), () => undefined);
+    saved = saved ?? mountSavedPanel(savedRoot, () => go('write'), renderSavedCount);
     saved.redraw();
   } else {
     writing.redraw();
@@ -213,4 +222,5 @@ for (const button of viewButtons) {
 
 window.addEventListener('hashchange', () => showView(viewFromHash() ?? current));
 
+renderSavedCount();
 showView(viewFromHash() ?? 'write');

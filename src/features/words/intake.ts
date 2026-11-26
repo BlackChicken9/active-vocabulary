@@ -14,6 +14,7 @@ function toWord(card: IntakeCard): Word {
     id: crypto.randomUUID(),
     headword: card.headword,
     pos: card.pos || undefined,
+    phonetic: card.phonetic || undefined,
     meaningZh: card.meaningZh,
     examples: card.examples,
     collocations: card.collocations,
