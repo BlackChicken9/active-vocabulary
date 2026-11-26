@@ -18,7 +18,7 @@ const MAX_BODY = 12_000;
 const MAX_TEXT = 2_000;
 const MAX_RAW = 6_000;
 const MAX_CARDS = 30;
-const MAX_GLOSS = 60;
+const MAX_GLOSS = 120;
 const MAX_EXPLAIN_SENTENCES = 12;
 /** 访客自带密钥：走请求头，不进 URL、不进日志，也只在这一次请求里活着。 */
 const MODEL_KEY_HEADER = 'x-model-key';
@@ -298,7 +298,7 @@ function explainPrompt(words: TargetWord[], count: number): string {
     'zh 要像中文原创的句子：按中文习惯调整语序、意译，不逐词直译、没有翻译腔（避免「被/进行/使得」式的生硬表达）；意思必须忠实原句，不增删信息。',
     'marked 把该句按顺序切成 2~6 段：方括号里先写成分名（主语/谓语/宾语/表语/补语/定语/状语/从句/连接词），空格后原样抄写那一段英文；各段拼起来要能还原整句。',
     'structure 只讲结构（谁是主语、谓语是什么、哪个是从句、修饰谁），不要重复译文，不要泛泛而谈。',
-    'glossary 只收影响理解的实词与固定搭配（最多 60 条），用文中出现的形态，释义 12 字以内；目标词必收，释义与词卡一致。',
+    'glossary 尽量覆盖文中出现的所有实词与专有名词（名词/动词/形容词/副词/地名/人名等，最多 120 条），用文中出现的形态，释义 12 字以内；目标词必收，释义与词卡一致。',
     '全部中文用简体，不要输出 Markdown 或额外解释。',
     words.length ? '目标词表：' : '',
     words.length ? describe(words) : '',
@@ -523,7 +523,7 @@ export function createHandler(env: GatewayEnv = {}) {
       const numbered = sentences.map((sentence, index) => `${index + 1}. ${sentence}`).join('\n');
       try {
         // 讲解输出大（12 句 × 译文/结构/成分 + 词汇表）：token 给足防 JSON 截断，
-        // 超时 90s 抗高峰抖动；词汇表已收紧到 60 条，正常 10s 级返回。
+        // 超时 90s 抗高峰抖动；词汇表放宽到 120 条，让点词尽量开箱即译。
         const { data, model } = await chat(cfg, explainPrompt(words, sentences.length), numbered, {
           maxTokens: 8_000,
           timeoutMs: 90_000,

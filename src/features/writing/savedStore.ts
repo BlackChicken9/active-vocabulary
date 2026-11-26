@@ -6,7 +6,7 @@ const MAX_SAVED = 50;
 // 讲解快照按条数封顶：50 篇全存满也不该把 localStorage 顶到写不进去。
 const MAX_SNAPSHOT_SENTENCES = 12;
 const MAX_SNAPSHOT_PARTS = 8;
-const MAX_SNAPSHOT_GLOSS = 60;
+const MAX_SNAPSHOT_GLOSS = 120;
 
 export type SavedKind = 'model' | 'mine';
 
