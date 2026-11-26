@@ -242,6 +242,7 @@ export function mountWritingPanel(
     closedNotes = new Set();
     notePending = new Set();
     noteError = new Map();
+    popover.clearCache();
     popover.close();
   }
 
@@ -1001,6 +1002,7 @@ export function mountWritingPanel(
       }
       modelError = null;
       model = result.data;
+      popover.clearCache();
       modelLength = taskLength(active);
       // 新示范一落地先看整段：连着把这段话读完，再切「逐句讲解」逐句拆。
       passageView = 'whole';
@@ -1023,6 +1025,26 @@ export function mountWritingPanel(
     });
   });
 
+  /** 整段视图下提取被点击词所在的那一句，避免长段落超过 600 字截断导致上下文丢失。 */
+  function sentenceForToken(text: string, node: HTMLElement): string {
+    const scopeEl = node.closest<HTMLElement>('.passage__text');
+    if (!scopeEl) return text;
+    const range = document.createRange();
+    range.setStart(scopeEl, 0);
+    range.setEndBefore(node);
+    const offset = range.toString().replace(/\s+/g, ' ').trimStart().length;
+    const clean = text.replace(/\s+/g, ' ').trim();
+    let cursor = 0;
+    for (const s of splitSentences(clean)) {
+      const idx = clean.indexOf(s, cursor);
+      if (idx === -1) continue;
+      const end = idx + s.length;
+      if (offset >= idx && offset <= end) return s;
+      cursor = end;
+    }
+    return clean || text;
+  }
+
   // 一段短文上百个词，用委托而不是逐词挂监听；重绘换掉节点也不会漏。
   deskRoot.addEventListener('click', (event) => {
     const node = event.target instanceof Element ? event.target.closest<HTMLElement>('.tok, .target') : null;
@@ -1031,7 +1053,7 @@ export function mountWritingPanel(
     const scope = node.dataset.si ?? 'w';
     const context =
       scope === 'w'
-        ? (model?.text ?? '')
+        ? sentenceForToken(model?.text ?? '', node)
         : (explain?.sentences[Number(scope)]?.en ?? model?.text ?? '');
     popover.open(node, term, context);
   });

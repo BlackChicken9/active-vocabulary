@@ -29,6 +29,8 @@ export interface WordPopover {
   close(restoreFocus?: boolean): void;
   /** 面板整块重绘后锚点元素会被换掉，这里按 id 找回同一个词。 */
   reanchor(): void;
+  /** 换题或重写示范后清掉上一篇的现查缓存，避免旧语境释义串到新短文。 */
+  clearCache(): void;
 }
 
 export function createWordPopover(deps: WordPopoverDeps): WordPopover {
@@ -45,6 +47,7 @@ export function createWordPopover(deps: WordPopoverDeps): WordPopover {
   let term = '';
   let sentence = '';
   let loading = false;
+  let reqSeq = 0;
   let note: string | null = null;
 
   function anchor(): HTMLElement | null {
@@ -115,9 +118,9 @@ export function createWordPopover(deps: WordPopoverDeps): WordPopover {
              <p class="gloss__source">${SOURCE_ZH[hit!.source]}${
                bank ? ` · <i class="dot ${bank.mastery}" aria-hidden="true"></i>${masteryZh[bank.mastery]}` : ''
              }</p>`
-          : `<p class="gloss__meaning empty">${
-              loading ? 'AI 正在查这个词…' : '还没有释义。'
-            }</p>`
+          : loading
+            ? '<p class="gloss__meaning empty busy"><span class="spinner" aria-hidden="true"></span>正在自动翻译…</p>'
+            : '<p class="gloss__meaning empty">暂未查到释义。</p>'
       }
       ${
         bank?.collocations.length
@@ -131,17 +134,19 @@ export function createWordPopover(deps: WordPopoverDeps): WordPopover {
           : ''
       }
       ${note ? `<p class="gloss__note">${escapeHtml(note)}</p>` : ''}
-      <div class="gloss__row">
-        ${
-          canAdd
-            ? `<button type="button" class="btn btn--primary btn--sm" id="gloss-add">收进词库</button>`
-            : bank
-              ? `<span class="gloss__inbank">已在你的词库</span>`
-              : `<button type="button" class="btn btn--secondary btn--sm" id="gloss-ask" ${
-                  loading ? 'disabled' : ''
-                }>${loading ? 'AI 正在查…' : '让 AI 查这个词'}</button>`
-        }
-      </div>`;
+      ${
+        canAdd || bank || !loading
+          ? `<div class="gloss__row">
+              ${
+                canAdd
+                  ? `<button type="button" class="btn btn--primary btn--sm" id="gloss-add">收进词库</button>`
+                  : bank
+                    ? `<span class="gloss__inbank">已在你的词库</span>`
+                    : `<button type="button" class="btn btn--secondary btn--sm" id="gloss-ask">重试翻译</button>`
+              }
+            </div>`
+          : ''
+      }`;
 
     box.querySelector<HTMLButtonElement>('#gloss-close')?.addEventListener('click', () => close(true));
     box.querySelector<HTMLButtonElement>('#gloss-add')?.addEventListener('click', () => {
@@ -157,24 +162,29 @@ export function createWordPopover(deps: WordPopoverDeps): WordPopover {
       paint();
       place();
     });
-    box.querySelector<HTMLButtonElement>('#gloss-ask')?.addEventListener('click', async () => {
-      if (loading) return;
-      loading = true;
-      note = null;
-      paint();
-      place();
-      const result = await requestGloss(term, sentence);
-      loading = false;
-      if (result.data.meaningZh) {
-        fetched.set(term.toLowerCase(), result.data);
-        note = null;
-      } else {
-        note = `${result.degraded ?? 'AI 没给出释义'}。`;
-      }
-      paint();
-      place();
+    box.querySelector<HTMLButtonElement>('#gloss-ask')?.addEventListener('click', () => {
+      if (!loading) void fetchGloss();
     });
     place();
+  }
+
+  /** 点开即自动查词；结果写进当前短文缓存，再点同一词时开箱即译。 */
+  async function fetchGloss(): Promise<void> {
+    const seq = ++reqSeq;
+    const targetId = anchorId;
+    const targetTerm = term;
+    const targetSentence = sentence;
+    loading = true;
+    note = null;
+    paint();
+    const result = await requestGloss(targetTerm, targetSentence);
+    if (result.data.meaningZh) {
+      fetched.set(targetTerm.toLowerCase(), result.data);
+    }
+    if (seq !== reqSeq || box.hidden || anchorId !== targetId) return;
+    loading = false;
+    note = result.data.meaningZh ? null : `${result.degraded ?? 'AI 没给出释义'}。`;
+    paint();
   }
 
   function open(target: HTMLElement, value: string, context: string): void {
@@ -182,22 +192,29 @@ export function createWordPopover(deps: WordPopoverDeps): WordPopover {
       close(true);
       return;
     }
+    reqSeq += 1;
     anchorId = target.id;
     term = value;
     sentence = context;
     loading = false;
     note = null;
     box.hidden = false;
-    paint();
     document.querySelectorAll<HTMLElement>('.tok[data-active="1"]').forEach((node) => {
       delete node.dataset.active;
     });
     target.dataset.active = '1';
+    if (hitOf()) {
+      paint();
+      return;
+    }
+    void fetchGloss();
   }
 
   function close(restoreFocus = false): void {
     if (box.hidden) return;
     const target = anchor();
+    reqSeq += 1;
+    loading = false;
     box.hidden = true;
     document.querySelectorAll<HTMLElement>('.tok[data-active="1"]').forEach((node) => {
       delete node.dataset.active;
@@ -229,7 +246,17 @@ export function createWordPopover(deps: WordPopoverDeps): WordPopover {
         close();
         return;
       }
+      if (loading && hitOf()) {
+        reqSeq += 1;
+        loading = false;
+        note = null;
+        paint();
+        return;
+      }
       place();
+    },
+    clearCache(): void {
+      fetched.clear();
     },
   };
 }
